@@ -2,8 +2,6 @@
 
 This is a github action to add automatic reviewer lottery to your pull requests.
 
-#Installation
-
 Add your configuration on `.github/reviewer-lottery.yml`
 
 ```yaml
@@ -36,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v1
-    - uses: ./
+    - uses: uesteibar/reviewer-lottery@v1
       with:
         repo-token: ${{ secrets.GITHUB_TOKEN }}
 ```
@@ -45,30 +43,3 @@ jobs:
 When opening a PR, this github action will assign random reviewers:
 
 ![](./img/assignation_example.png)
-
-## Developing
-
-Install the dependencies  
-```bash
-$ npm install
-```
-
-Build the typescript and package it for distribution
-```bash
-$ npm run build && npm run pack
-```
-
-Run the tests :heavy_check_mark:
-```bash
-$ npm test
-```
-
-## Publishing
-
-See the [versioning documentation](https://github.com/actions/toolkit/blob/master/docs/action-versioning.md)
-
-## Validate
-
-## Usage:
-
-After testing you can [create a v1 tag](https://github.com/actions/toolkit/blob/master/docs/action-versioning.md) to reference the stable and latest V1 action
