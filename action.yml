@@ -1,10 +1,13 @@
-name: 'Your name here'
-description: 'Provide a description here'
-author: 'Your name or organization here'
+name: 'Reviewer lottery'
+description: 'Automatically assign reviewers to Pull Requests'
+author: 'Unai Esteibar'
 inputs:
-  myInput:              # change this
-    description: 'input description here'
-    default: 'default value if applicable'
+  repo-token:
+    description: "Github token secret"
+    required: true
+  config:
+    description: 'Path to config file'
+    default: '.github/reviewer-lottery.yml'
 runs:
   using: 'node12'
   main: 'dist/index.js'
