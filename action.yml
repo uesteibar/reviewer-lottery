@@ -1,6 +1,9 @@
 name: 'Reviewer lottery'
 description: 'Automatically assign reviewers to Pull Requests'
 author: 'Unai Esteibar'
+branding:
+  icon: 'eye'
+  color: 'orange'
 inputs:
   repo-token:
     description: "Github token secret"

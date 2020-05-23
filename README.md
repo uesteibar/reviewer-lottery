@@ -1,8 +1,35 @@
+# Reviewer lottery (Github Action)
+
+This is a github action to add automatic reviewer lottery to your pull requests.
+
+#Installation
+
+Add your configuration on `.github/reviewer-lottery.yml`
+
+```yaml
+groups:
+  - name: devs # name of the group
+    reviewers: 1 # how many reviewers do you want to assign?
+    usernames: # github usernames of the reviewers
+      - uesteibar
+      - tebs
+      - rudeayelo
+      - marciobarrios
+
+  - name: qas # you can have multiple groups, it will evaluate them separately
+    reviewers: 1
+    usernames:
+      - some_user
+      - someoneelse
+```
+
+The ideal workflow configuration is:
+
 ```yaml
 name: "test-lottery"
 on:
   pull_request:
-    types: [opened, reopened]
+    types: [opened, ready_to_review, reopened]
 
 jobs:
   test:
@@ -13,7 +40,13 @@ jobs:
       with:
         repo-token: ${{ secrets.GITHUB_TOKEN }}
 ```
-## Code in Master
+
+
+When opening a PR, this github action will assign random reviewers:
+
+![](./img/assignation_example.png)
+
+## Developing
 
 Install the dependencies  
 ```bash
@@ -25,75 +58,16 @@ Build the typescript and package it for distribution
 $ npm run build && npm run pack
 ```
 
-Run the tests :heavy_check_mark:  
+Run the tests :heavy_check_mark:
 ```bash
 $ npm test
-
- PASS  ./index.test.js
-  ✓ throws invalid number (3ms)
-  ✓ wait 500 ms (504ms)
-  ✓ test runs (95ms)
-
-...
 ```
 
-## Change action.yml
-
-The action.yml contains defines the inputs and output for your action.
-
-Update the action.yml with your name, description, inputs and outputs for your action.
-
-See the [documentation](https://help.github.com/en/articles/metadata-syntax-for-github-actions)
-
-## Change the Code
-
-Most toolkit and CI/CD operations involve async operations so the action is run in an async function.
-
-```javascript
-import * as core from '@actions/core';
-...
-
-async function run() {
-  try { 
-      ...
-  } 
-  catch (error) {
-    core.setFailed(error.message);
-  }
-}
-
-run()
-```
-
-See the [toolkit documentation](https://github.com/actions/toolkit/blob/master/README.md#packages) for the various packages.
-
-## Publish to a distribution branch
-
-Actions are run from GitHub repos so we will checkin the packed dist folder. 
-
-Then run [ncc](https://github.com/zeit/ncc) and push the results:
-```bash
-$ npm run pack
-$ git add dist
-$ git commit -a -m "prod dependencies"
-$ git push origin releases/v1
-```
-
-Your action is now published! :rocket: 
+## Publishing
 
 See the [versioning documentation](https://github.com/actions/toolkit/blob/master/docs/action-versioning.md)
 
 ## Validate
-
-You can now validate the action by referencing `./` in a workflow in your repo (see [test.yml](.github/workflows/test.yml)])
-
-```yaml
-uses: ./
-with:
-  milliseconds: 1000
-```
-
-See the [actions tab](https://github.com/actions/javascript-action/actions) for runs of this action! :rocket:
 
 ## Usage:
 
