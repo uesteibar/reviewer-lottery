@@ -7898,7 +7898,7 @@ exports.getConfig = () => {
     catch (error) {
         core.setFailed(error.message);
     }
-    return {};
+    return { groups: [] };
 };
 
 
@@ -8340,9 +8340,13 @@ var __importStar = (this && this.__importStar) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const core = __importStar(__webpack_require__(470));
 class Lottery {
-    constructor({ octokit, config }) {
+    constructor({ octokit, config, env }) {
         this.octokit = octokit;
         this.config = config;
+        this.env = {
+            repository: env.repository,
+            ref: env.ref
+        };
     }
     run() {
         return __awaiter(this, void 0, void 0, function* () {
@@ -8351,8 +8355,8 @@ class Lottery {
                 yield this.setReviewers(reviewers);
             }
             catch (error) {
-                core.info(error.message());
-                core.setFailed(error.message());
+                core.info(error);
+                core.setFailed(error);
             }
         });
     }
@@ -8367,12 +8371,12 @@ class Lottery {
             let selected = [];
             const author = yield this.getPRAuthor();
             try {
-                for (const { reviewers, usernames } of Object.values(this.config)) {
+                for (const { reviewers, usernames } of this.config.groups) {
                     selected = selected.concat(this.pickRandom(usernames, reviewers, author));
                 }
             }
             catch (error) {
-                core.setFailed(error.message());
+                core.setFailed(error);
             }
             return selected;
         });
@@ -8396,26 +8400,25 @@ class Lottery {
                 return data.user.login || '';
             }
             catch (error) {
-                core.info(error.message());
-                core.setFailed(error.message());
+                core.info(error);
+                core.setFailed(error);
             }
             return '';
         });
     }
     getOwnerAndRepo() {
-        if (!process.env.GITHUB_REPOSITORY)
-            throw new Error('missing GITHUB_REPOSITORY');
-        const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/');
+        const [owner, repo] = this.env.repository.split('/');
         return { owner, repo };
     }
     getPRNumber() {
-        if (!process.env.GITHUB_REF)
-            throw new Error('missing GITHUB_REF');
-        return Number(process.env.GITHUB_REF.split('refs/pull/')[1].split('/')[0]);
+        return Number(this.env.ref.split('refs/pull/')[1].split('/')[0]);
     }
 }
-exports.runLottery = (octokit, config) => __awaiter(void 0, void 0, void 0, function* () {
-    const lottery = new Lottery({ octokit, config });
+exports.runLottery = (octokit, config, env = {
+    repository: process.env.GITHUB_REPOSITORY || '',
+    ref: process.env.GITHUB_REF || ''
+}) => __awaiter(void 0, void 0, void 0, function* () {
+    const lottery = new Lottery({ octokit, config, env });
     yield lottery.run();
 });
 

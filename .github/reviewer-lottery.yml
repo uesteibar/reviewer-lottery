@@ -1,10 +1,12 @@
-devs:
-  reviewers: 1
-  usernames:
-    - uesteibar
-    - tebs
+groups:
+  - name: devs
+    reviewers: 1
+    usernames:
+      - uesteibar
+      - tebs
 
-qas:
-  reviewers: 1
-  usernames:
-    - tebs
+  - name: qas
+    reviewers: 1
+    usernames:
+      - tebs
+

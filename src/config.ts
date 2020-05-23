@@ -2,11 +2,13 @@ import * as core from '@actions/core'
 import yaml from 'js-yaml'
 import fs from 'fs'
 
+interface Group {
+  name: string
+  reviewers: number
+  usernames: string[]
+}
 export interface Config {
-  [group: string]: {
-    usernames: string[]
-    reviewers: number
-  }
+  groups: Group[]
 }
 
 export const getConfig = (): Config => {
@@ -18,5 +20,5 @@ export const getConfig = (): Config => {
     core.setFailed(error.message)
   }
 
-  return {}
+  return {groups: []}
 }

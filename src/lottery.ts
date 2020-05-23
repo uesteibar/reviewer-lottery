@@ -2,13 +2,31 @@ import * as core from '@actions/core'
 import {Octokit} from '@octokit/rest'
 import {Config} from './config'
 
+interface Env {
+  repository: string
+  ref: string
+}
+
 class Lottery {
   octokit: Octokit
   config: Config
+  env: Env
 
-  constructor({octokit, config}: {octokit: Octokit; config: Config}) {
+  constructor({
+    octokit,
+    config,
+    env
+  }: {
+    octokit: Octokit
+    config: Config
+    env: Env
+  }) {
     this.octokit = octokit
     this.config = config
+    this.env = {
+      repository: env.repository,
+      ref: env.ref
+    }
   }
 
   async run(): Promise<void> {
@@ -16,8 +34,8 @@ class Lottery {
       const reviewers = await this.selectReviewers()
       await this.setReviewers(reviewers)
     } catch (error) {
-      core.info(error.message())
-      core.setFailed(error.message())
+      core.info(error)
+      core.setFailed(error)
     }
   }
 
@@ -34,13 +52,13 @@ class Lottery {
     const author = await this.getPRAuthor()
 
     try {
-      for (const {reviewers, usernames} of Object.values(this.config)) {
+      for (const {reviewers, usernames} of this.config.groups) {
         selected = selected.concat(
           this.pickRandom(usernames, reviewers, author)
         )
       }
     } catch (error) {
-      core.setFailed(error.message())
+      core.setFailed(error)
     }
 
     return selected
@@ -70,34 +88,33 @@ class Lottery {
 
       return data.user.login || ''
     } catch (error) {
-      core.info(error.message())
-      core.setFailed(error.message())
+      core.info(error)
+      core.setFailed(error)
     }
 
     return ''
   }
 
   getOwnerAndRepo(): {owner: string; repo: string} {
-    if (!process.env.GITHUB_REPOSITORY)
-      throw new Error('missing GITHUB_REPOSITORY')
-
-    const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/')
+    const [owner, repo] = this.env.repository.split('/')
 
     return {owner, repo}
   }
 
   getPRNumber(): number {
-    if (!process.env.GITHUB_REF) throw new Error('missing GITHUB_REF')
-
-    return Number(process.env.GITHUB_REF.split('refs/pull/')[1].split('/')[0])
+    return Number(this.env.ref.split('refs/pull/')[1].split('/')[0])
   }
 }
 
 export const runLottery = async (
   octokit: Octokit,
-  config: Config
+  config: Config,
+  env = {
+    repository: process.env.GITHUB_REPOSITORY || '',
+    ref: process.env.GITHUB_REF || ''
+  }
 ): Promise<void> => {
-  const lottery = new Lottery({octokit, config})
+  const lottery = new Lottery({octokit, config, env})
 
   await lottery.run()
 }
