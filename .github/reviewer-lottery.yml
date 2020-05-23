@@ -1,0 +1,10 @@
+devs:
+  reviewers: 1
+  usernames:
+    - uesteibar
+    - tebs
+
+qas:
+  reviewers: 1
+  usernames:
+    - tebs

@@ -1,6 +1,7 @@
 import * as core from '@actions/core'
 import {runLottery} from './lottery'
 import {Octokit} from '@octokit/rest'
+import {getConfig} from './config'
 
 async function run(): Promise<void> {
   try {
@@ -9,8 +10,9 @@ async function run(): Promise<void> {
       throw new Error('missing GITHUB_REPOSITORY')
     //comes from {{secrets.GITHUB_TOKEN}}
     const token = core.getInput('repo-token', {required: true})
+    const config = getConfig()
 
-    runLottery(new Octokit({auth: token}))
+    await runLottery(new Octokit({auth: token}), config)
   } catch (error) {
     core.setFailed(error.message)
   }

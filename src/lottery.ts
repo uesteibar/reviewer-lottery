@@ -1,80 +1,103 @@
 import * as core from '@actions/core'
 import {Octokit} from '@octokit/rest'
+import {Config} from './config'
 
-interface User {
-  login: string
-}
+class Lottery {
+  octokit: Octokit
+  config: Config
 
-const getOwnerAndRepo = (): {owner: string; repo: string} => {
-  if (!process.env.GITHUB_REPOSITORY)
-    throw new Error('missing GITHUB_REPOSITORY')
+  constructor({octokit, config}: {octokit: Octokit; config: Config}) {
+    this.octokit = octokit
+    this.config = config
+  }
 
-  const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/')
+  async run(): Promise<void> {
+    try {
+      const reviewers = await this.selectReviewers()
+      await this.setReviewers(reviewers)
+    } catch (error) {
+      core.info(error.message())
+      core.setFailed(error.message())
+    }
+  }
 
-  return {owner, repo}
-}
-
-const getPRNumber = (): number => {
-  if (!process.env.GITHUB_REF) throw new Error('missing GITHUB_REF')
-
-  return Number(process.env.GITHUB_REF.split('refs/pull/')[1].split('/')[0])
-}
-
-const getPRAuthor = async (octokit: Octokit): Promise<string> => {
-  try {
-    const {data} = await octokit.pulls.get({
-      ...getOwnerAndRepo(),
-      pull_number: getPRNumber() // eslint-disable-line @typescript-eslint/camelcase
+  async setReviewers(reviewers: string[]): Promise<object> {
+    return this.octokit.pulls.createReviewRequest({
+      ...this.getOwnerAndRepo(),
+      pull_number: this.getPRNumber(), // eslint-disable-line @typescript-eslint/camelcase
+      reviewers
     })
-
-    return data.user.login || ''
-  } catch (error) {
-    core.info(error.message())
-    core.setFailed(error.message())
   }
 
-  return ''
+  async selectReviewers(): Promise<string[]> {
+    let selected: string[] = []
+    const author = await this.getPRAuthor()
+
+    try {
+      for (const {reviewers, usernames} of Object.values(this.config)) {
+        selected = selected.concat(
+          this.pickRandom(usernames, reviewers, author)
+        )
+      }
+    } catch (error) {
+      core.setFailed(error.message())
+    }
+
+    return selected
+  }
+
+  pickRandom(items: string[], n: number, ignore: string): string[] {
+    const picks: string[] = []
+
+    const candidates = items.filter(item => item !== ignore)
+
+    while (picks.length < n) {
+      const random = Math.floor(Math.random() * candidates.length)
+      const pick = candidates.splice(random, 1)[0]
+
+      if (!picks.includes(pick)) picks.push(pick)
+    }
+
+    return picks
+  }
+
+  async getPRAuthor(): Promise<string> {
+    try {
+      const {data} = await this.octokit.pulls.get({
+        ...this.getOwnerAndRepo(),
+        pull_number: this.getPRNumber() // eslint-disable-line @typescript-eslint/camelcase
+      })
+
+      return data.user.login || ''
+    } catch (error) {
+      core.info(error.message())
+      core.setFailed(error.message())
+    }
+
+    return ''
+  }
+
+  getOwnerAndRepo(): {owner: string; repo: string} {
+    if (!process.env.GITHUB_REPOSITORY)
+      throw new Error('missing GITHUB_REPOSITORY')
+
+    const [owner, repo] = process.env.GITHUB_REPOSITORY.split('/')
+
+    return {owner, repo}
+  }
+
+  getPRNumber(): number {
+    if (!process.env.GITHUB_REF) throw new Error('missing GITHUB_REF')
+
+    return Number(process.env.GITHUB_REF.split('refs/pull/')[1].split('/')[0])
+  }
 }
 
-const selectReviewers = async (
+export const runLottery = async (
   octokit: Octokit,
-  users: User[],
-  n: number
-): Promise<string[]> => {
-  const reviewers: string[] = []
-  const author = await getPRAuthor(octokit)
-  const userLogins = users
-    .map(({login}) => login)
-    .filter(login => login !== author)
-  for (let i = 0; i < n; i++) {
-    const random = Math.floor(Math.random() * userLogins.length)
-    const reviewer = userLogins.splice(random, 1)[0]
-    reviewers.push(reviewer)
-  }
+  config: Config
+): Promise<void> => {
+  const lottery = new Lottery({octokit, config})
 
-  return reviewers
-}
-
-const setReviewers = async (
-  octokit: Octokit,
-  users: User[]
-): Promise<object> => {
-  const reviewers = await selectReviewers(octokit, users, 1)
-
-  return octokit.pulls.createReviewRequest({
-    ...getOwnerAndRepo(),
-    pull_number: getPRNumber(), // eslint-disable-line @typescript-eslint/camelcase
-    reviewers
-  })
-}
-
-export const runLottery = async (octokit: Octokit): Promise<void> => {
-  try {
-    const {data} = await octokit.repos.listCollaborators(getOwnerAndRepo())
-
-    await setReviewers(octokit, data)
-  } catch (error) {
-    core.info(error.message())
-    core.setFailed(error.message())
-  }
+  await lottery.run()
 }
