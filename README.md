@@ -24,10 +24,10 @@ groups:
 The ideal workflow configuration is:
 
 ```yaml
-name: "test-lottery"
+name: "Reviewer lottery"
 on:
   pull_request:
-    types: [opened, ready_to_review, reopened]
+    types: [opened, ready_for_review, reopened]
 
 jobs:
   test:
