@@ -5,6 +5,9 @@ inputs:
   repo-token:
     description: "Github token secret"
     required: true
+  config:
+    description: 'Path to config file'
+    default: '.github/reviewer-lottery.yml'
 runs:
   using: 'node12'
   main: 'dist/index.js'
