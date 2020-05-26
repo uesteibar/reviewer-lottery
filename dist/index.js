@@ -8347,22 +8347,41 @@ class Lottery {
             repository: env.repository,
             ref: env.ref
         };
+        this.pr = null;
     }
     run() {
         return __awaiter(this, void 0, void 0, function* () {
             try {
-                const reviewers = yield this.selectReviewers();
-                yield this.setReviewers(reviewers);
+                const ready = yield this.isReadyToReview();
+                if (ready) {
+                    const reviewers = yield this.selectReviewers();
+                    yield this.setReviewers(reviewers);
+                }
             }
             catch (error) {
-                core.info(error);
+                core.error(error);
                 core.setFailed(error);
+            }
+        });
+    }
+    isReadyToReview() {
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                const pr = yield this.getPR();
+                return !!pr && !pr.draft;
+            }
+            catch (error) {
+                core.error(error);
+                core.setFailed(error);
+                return false;
             }
         });
     }
     setReviewers(reviewers) {
         return __awaiter(this, void 0, void 0, function* () {
-            return this.octokit.pulls.createReviewRequest(Object.assign(Object.assign({}, this.getOwnerAndRepo()), { pull_number: this.getPRNumber(), // eslint-disable-line @typescript-eslint/camelcase
+            const ownerAndRepo = this.getOwnerAndRepo();
+            const pr = this.getPRNumber();
+            return this.octokit.pulls.createReviewRequest(Object.assign(Object.assign({}, ownerAndRepo), { pull_number: pr, // eslint-disable-line @typescript-eslint/camelcase
                 reviewers }));
         });
     }
@@ -8376,6 +8395,7 @@ class Lottery {
                 }
             }
             catch (error) {
+                core.error(error);
                 core.setFailed(error);
             }
             return selected;
@@ -8395,12 +8415,11 @@ class Lottery {
     getPRAuthor() {
         return __awaiter(this, void 0, void 0, function* () {
             try {
-                const { data } = yield this.octokit.pulls.get(Object.assign(Object.assign({}, this.getOwnerAndRepo()), { pull_number: this.getPRNumber() // eslint-disable-line @typescript-eslint/camelcase
-                 }));
-                return data.user.login || '';
+                const pr = yield this.getPR();
+                return pr ? pr.user.login : '';
             }
             catch (error) {
-                core.info(error);
+                core.error(error);
                 core.setFailed(error);
             }
             return '';
@@ -8412,6 +8431,23 @@ class Lottery {
     }
     getPRNumber() {
         return Number(this.env.ref.split('refs/pull/')[1].split('/')[0]);
+    }
+    getPR() {
+        return __awaiter(this, void 0, void 0, function* () {
+            if (this.pr)
+                return this.pr;
+            try {
+                const { data } = yield this.octokit.pulls.get(Object.assign(Object.assign({}, this.getOwnerAndRepo()), { pull_number: this.getPRNumber() // eslint-disable-line @typescript-eslint/camelcase
+                 }));
+                this.pr = data;
+                return this.pr;
+            }
+            catch (error) {
+                core.error(error);
+                core.setFailed(error);
+                return null;
+            }
+        });
     }
 }
 exports.runLottery = (octokit, config, env = {

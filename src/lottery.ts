@@ -2,6 +2,12 @@ import * as core from '@actions/core'
 import {Octokit} from '@octokit/rest'
 import {Config} from './config'
 
+export interface Pull {
+  user: {
+    login: string
+  }
+  draft: boolean
+}
 interface Env {
   repository: string
   ref: string
@@ -11,6 +17,7 @@ class Lottery {
   octokit: Octokit
   config: Config
   env: Env
+  pr: Pull | null
 
   constructor({
     octokit,
@@ -27,22 +34,40 @@ class Lottery {
       repository: env.repository,
       ref: env.ref
     }
+    this.pr = null
   }
 
   async run(): Promise<void> {
     try {
-      const reviewers = await this.selectReviewers()
-      await this.setReviewers(reviewers)
+      const ready = await this.isReadyToReview()
+      if (ready) {
+        const reviewers = await this.selectReviewers()
+        await this.setReviewers(reviewers)
+      }
     } catch (error) {
-      core.info(error)
+      core.error(error)
       core.setFailed(error)
     }
   }
 
+  async isReadyToReview(): Promise<boolean> {
+    try {
+      const pr = await this.getPR()
+      return !!pr && !pr.draft
+    } catch (error) {
+      core.error(error)
+      core.setFailed(error)
+      return false
+    }
+  }
+
   async setReviewers(reviewers: string[]): Promise<object> {
+    const ownerAndRepo = this.getOwnerAndRepo()
+    const pr = this.getPRNumber()
+
     return this.octokit.pulls.createReviewRequest({
-      ...this.getOwnerAndRepo(),
-      pull_number: this.getPRNumber(), // eslint-disable-line @typescript-eslint/camelcase
+      ...ownerAndRepo,
+      pull_number: pr, // eslint-disable-line @typescript-eslint/camelcase
       reviewers
     })
   }
@@ -58,6 +83,7 @@ class Lottery {
         )
       }
     } catch (error) {
+      core.error(error)
       core.setFailed(error)
     }
 
@@ -81,14 +107,11 @@ class Lottery {
 
   async getPRAuthor(): Promise<string> {
     try {
-      const {data} = await this.octokit.pulls.get({
-        ...this.getOwnerAndRepo(),
-        pull_number: this.getPRNumber() // eslint-disable-line @typescript-eslint/camelcase
-      })
+      const pr = await this.getPR()
 
-      return data.user.login || ''
+      return pr ? pr.user.login : ''
     } catch (error) {
-      core.info(error)
+      core.error(error)
       core.setFailed(error)
     }
 
@@ -103,6 +126,26 @@ class Lottery {
 
   getPRNumber(): number {
     return Number(this.env.ref.split('refs/pull/')[1].split('/')[0])
+  }
+
+  async getPR(): Promise<Pull | null> {
+    if (this.pr) return this.pr
+
+    try {
+      const {data} = await this.octokit.pulls.get({
+        ...this.getOwnerAndRepo(),
+        pull_number: this.getPRNumber() // eslint-disable-line @typescript-eslint/camelcase
+      })
+
+      this.pr = data
+
+      return this.pr
+    } catch (error) {
+      core.error(error)
+      core.setFailed(error)
+
+      return null
+    }
   }
 }
 
