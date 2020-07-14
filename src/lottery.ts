@@ -65,7 +65,7 @@ class Lottery {
     const ownerAndRepo = this.getOwnerAndRepo()
     const pr = this.getPRNumber()
 
-    return this.octokit.pulls.createReviewRequest({
+    return this.octokit.pulls.requestReviewers({
       ...ownerAndRepo,
       pull_number: pr, // eslint-disable-line @typescript-eslint/camelcase
       reviewers

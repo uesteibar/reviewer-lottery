@@ -15,7 +15,7 @@ export const getConfig = (): Config => {
   const configPath = core.getInput('config', {required: true})
 
   try {
-    return yaml.safeLoad(fs.readFileSync(configPath, 'utf8'))
+    return yaml.safeLoad(fs.readFileSync(configPath, 'utf8')) as Config
   } catch (error) {
     core.setFailed(error.message)
   }
