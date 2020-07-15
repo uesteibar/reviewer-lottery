@@ -68,7 +68,7 @@ class Lottery {
     return this.octokit.pulls.requestReviewers({
       ...ownerAndRepo,
       pull_number: pr, // eslint-disable-line @typescript-eslint/camelcase
-      reviewers
+      reviewers: reviewers.filter((r: string | undefined) => !!r)
     })
   }
 

@@ -8414,8 +8414,7 @@ class Lottery {
         return __awaiter(this, void 0, void 0, function* () {
             const ownerAndRepo = this.getOwnerAndRepo();
             const pr = this.getPRNumber();
-            return this.octokit.pulls.requestReviewers(Object.assign(Object.assign({}, ownerAndRepo), { pull_number: pr, // eslint-disable-line @typescript-eslint/camelcase
-                reviewers }));
+            return this.octokit.pulls.requestReviewers(Object.assign(Object.assign({}, ownerAndRepo), { pull_number: pr, reviewers: reviewers.filter((r) => !!r) }));
         });
     }
     selectReviewers() {

@@ -79,3 +79,47 @@ test("doesn't assign reviewers if the PR is in draft state", async () => {
   getPullMock.done()
   nock.cleanAll()
 })
+
+test("doesn't send invalid reviewers if there is no elegible reviewers from one group", async () => {
+  const pull = {
+    user: {login: 'author'},
+    draft: false
+  }
+
+  const getPullMock = mockGetPull(pull)
+
+  const config = {
+    groups: [
+      {
+        name: 'Test',
+        reviewers: 1,
+        usernames: ['A']
+      },
+      {
+        name: 'Other group',
+        reviewers: 1,
+        usernames: ['author']
+      }
+    ]
+  }
+
+  const postReviewersMock = nock('https://api.github.com')
+    .post(
+      '/repos/uesteibar/repository/pulls/123/requested_reviewers',
+      (body): boolean => {
+        expect(body.reviewers).toEqual(['A'])
+
+        return true
+      }
+    )
+    .reply(200, pull)
+
+  await runLottery(octokit, config, {
+    repository: 'uesteibar/repository',
+    ref: 'refs/pull/123'
+  })
+
+  postReviewersMock.done()
+  getPullMock.done()
+  nock.cleanAll()
+})
