@@ -2690,7 +2690,6 @@ function run() {
             //comes from {{secrets.GITHUB_TOKEN}}
             const token = core.getInput('repo-token', { required: true });
             const config = config_1.getConfig();
-            core.info('Starting...');
             yield lottery_1.runLottery(new rest_1.Octokit({ auth: token }), config);
         }
         catch (error) {
@@ -8399,11 +8398,9 @@ class Lottery {
             const author = yield this.getPRAuthor();
             try {
                 for (const { reviewers, internal_reviewers: internalReviewers, usernames } of this.config.groups) {
-                    core.info(`internalReviewers: ${internalReviewers}`);
                     const reviewersToRequest = usernames.includes(author) && internalReviewers
                         ? internalReviewers
                         : reviewers;
-                    core.info(`reviewersToRequest: ${reviewersToRequest}`);
                     if (reviewersToRequest) {
                         selected = selected.concat(this.pickRandom(usernames, reviewersToRequest, author));
                     }

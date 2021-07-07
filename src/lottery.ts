@@ -82,12 +82,10 @@ class Lottery {
         internal_reviewers: internalReviewers,
         usernames
       } of this.config.groups) {
-        core.info(`internalReviewers: ${internalReviewers}`)
         const reviewersToRequest =
           usernames.includes(author) && internalReviewers
             ? internalReviewers
             : reviewers
-        core.info(`reviewersToRequest: ${reviewersToRequest}`)
 
         if (reviewersToRequest) {
           selected = selected.concat(

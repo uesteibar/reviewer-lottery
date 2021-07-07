@@ -11,7 +11,6 @@ async function run(): Promise<void> {
     //comes from {{secrets.GITHUB_TOKEN}}
     const token = core.getInput('repo-token', {required: true})
     const config = getConfig()
-    core.info('Starting...')
 
     await runLottery(new Octokit({auth: token}), config)
   } catch (error) {
