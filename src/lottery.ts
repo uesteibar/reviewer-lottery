@@ -42,7 +42,7 @@ class Lottery {
       const ready = await this.isReadyToReview()
       if (ready) {
         const reviewers = await this.selectReviewers()
-        await this.setReviewers(reviewers)
+        reviewers.length > 0 && (await this.setReviewers(reviewers))
       }
     } catch (error) {
       core.error(error)
@@ -77,10 +77,23 @@ class Lottery {
     const author = await this.getPRAuthor()
 
     try {
-      for (const {reviewers, usernames} of this.config.groups) {
-        selected = selected.concat(
-          this.pickRandom(usernames, reviewers, author)
-        )
+      for (const {
+        reviewers,
+        internal_reviewers: internalReviewers,
+        usernames
+      } of this.config.groups) {
+        core.info(`internalReviewers: ${internalReviewers}`)
+        const reviewersToRequest =
+          usernames.includes(author) && internalReviewers
+            ? internalReviewers
+            : reviewers
+        core.info(`reviewersToRequest: ${reviewersToRequest}`)
+
+        if (reviewersToRequest) {
+          selected = selected.concat(
+            this.pickRandom(usernames, reviewersToRequest, author)
+          )
+        }
       }
     } catch (error) {
       core.error(error)

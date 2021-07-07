@@ -123,3 +123,127 @@ test("doesn't send invalid reviewers if there is no elegible reviewers from one 
   getPullMock.done()
   nock.cleanAll()
 })
+
+test('selects internal reviewers if configured and author belongs to group', async () => {
+  const pull = {
+    user: {login: 'author'},
+    draft: false
+  }
+
+  const getPullMock = mockGetPull(pull)
+
+  const candidates = ['A', 'B', 'C', 'D', 'author']
+
+  const postReviewersMock = nock('https://api.github.com')
+    .post(
+      '/repos/uesteibar/repository/pulls/123/requested_reviewers',
+      (body): boolean => {
+        expect(body.reviewers).toHaveLength(1)
+
+        body.reviewers.forEach((reviewer: string) => {
+          expect(candidates).toContain(reviewer)
+          expect(reviewer).not.toEqual('author')
+        })
+        return true
+      }
+    )
+    .reply(200, pull)
+
+  const config = {
+    groups: [
+      {
+        name: 'Test',
+        reviewers: 2,
+        internal_reviewers: 1,
+        usernames: candidates
+      }
+    ]
+  }
+
+  await runLottery(octokit, config, {
+    repository: 'uesteibar/repository',
+    ref: 'refs/pull/123'
+  })
+
+  getPullMock.done()
+  postReviewersMock.done()
+
+  nock.cleanAll()
+})
+
+test("doesn't assign internal reviewrs if the author doesn't belong to group", async () => {
+  const pull = {
+    user: {login: 'author'},
+    draft: false
+  }
+
+  const getPullMock = mockGetPull(pull)
+
+  const candidates = ['A', 'B', 'C', 'D']
+
+  const postReviewersMock = nock('https://api.github.com')
+    .post(
+      '/repos/uesteibar/repository/pulls/123/requested_reviewers',
+      (body): boolean => {
+        expect(body.reviewers).toHaveLength(2)
+
+        body.reviewers.forEach((reviewer: string) => {
+          expect(candidates).toContain(reviewer)
+          expect(reviewer).not.toEqual('author')
+        })
+        return true
+      }
+    )
+    .reply(200, pull)
+
+  const config = {
+    groups: [
+      {
+        name: 'Test',
+        reviewers: 2,
+        internal_reviewers: 1,
+        usernames: candidates
+      }
+    ]
+  }
+
+  await runLottery(octokit, config, {
+    repository: 'uesteibar/repository',
+    ref: 'refs/pull/123'
+  })
+
+  getPullMock.done()
+  postReviewersMock.done()
+
+  nock.cleanAll()
+})
+
+test("doesn't assign reviewers if the author doesn't belong to group", async () => {
+  const pull = {
+    user: {login: 'author'},
+    draft: false
+  }
+
+  const getPullMock = mockGetPull(pull)
+
+  const candidates = ['A', 'B', 'C', 'D']
+
+  const config = {
+    groups: [
+      {
+        name: 'Test',
+        internal_reviewers: 1,
+        usernames: candidates
+      }
+    ]
+  }
+
+  await runLottery(octokit, config, {
+    repository: 'uesteibar/repository',
+    ref: 'refs/pull/123'
+  })
+
+  getPullMock.done()
+
+  nock.cleanAll()
+})
