@@ -7,8 +7,7 @@ Add your configuration on `.github/reviewer-lottery.yml`
 ```yaml
 groups:
   - name: devs # name of the group
-    reviewers: 2 # how many reviewers do you want to assign?
-    internal_reviewers: 1 # how many reviewers do you want to assign when the PR author belongs to this group?
+    reviewers: 1 # how many reviewers do you want to assign?
     usernames: # github usernames of the reviewers
       - uesteibar
       - tebs
@@ -21,15 +20,6 @@ groups:
       - some_user
       - someoneelse
 ```
-
-About `reviewers` and `internal_reviewers`: they can both be set, or only one of them, with the following behavior:
-- Both set:
-  - If the PR author belongs to the group, it will use `internal_reviewers`.
-  - If the PR author doesn't belong to the group, it will use `reviewers`.
-- Only `reviewer` set: it will always use `reviewer`, no matter if the PR author belongs to the group or not.
-- Only `internal_reviewers` set:
-  - If the PR author belongs to the group, it will use `internal_reviewers`.
-  - If the PR author doesn't belong to the group, it won't assign any reviewer.
 
 The ideal workflow configuration is:
 
