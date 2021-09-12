@@ -137,10 +137,7 @@ class Lottery {
   }
 
   getPRNumber(): number {
-    if (!this.pr) {
-      throw new Error('PR not set')
-    }
-    return Number(this.pr.number)
+    return Number(this.pr?.number)
   }
 
   async getPR(): Promise<Pull | undefined> {

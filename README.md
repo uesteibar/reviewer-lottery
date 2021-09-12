@@ -36,7 +36,7 @@ The ideal workflow configuration is:
 ```yaml
 name: "Reviewer lottery"
 on:
-  pull_request:
+  pull_request_target:
     types: [opened, ready_for_review, reopened]
 
 jobs:
@@ -73,3 +73,8 @@ This way, you can add and remove yourself from the lottery easily in case you go
 are not working on this repo for some time, etc.
 
 Reviewing code is good and fun, but we want to be able to disconnect from time to time! :palm_tree: :sunny:
+
+**Why on pull_request_target?**
+
+By running this action on `pull_request_target` we enable this aciton to be performed on PRs opened by users with 
+readonly access to the repo, for example those by Dependabot.

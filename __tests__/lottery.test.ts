@@ -4,12 +4,12 @@ import {runLottery, Pull} from '../src/lottery'
 
 const octokit = new Octokit()
 const prNumber = 123
-const ref = `refs/pull/${prNumber}`
-const basePull = {number: prNumber, head: {ref: ref}}
+const ref = 'refs/pull/branch-name'
+const basePull = {number: prNumber, head: {ref}}
 
 const mockGetPull = (pull: Pull) =>
   nock('https://api.github.com')
-    .get(`/repos/uesteibar/repository/pulls`)
+    .get('/repos/uesteibar/repository/pulls')
     .reply(200, [pull])
 
 test('selects reviewers from a pool of users, ignoring author', async () => {
@@ -48,7 +48,7 @@ test('selects reviewers from a pool of users, ignoring author', async () => {
 
   await runLottery(octokit, config, {
     repository: 'uesteibar/repository',
-    ref: `refs/pull/${prNumber}`
+    ref
   })
 
   getPullMock.done()
@@ -78,7 +78,7 @@ test("doesn't assign reviewers if the PR is in draft state", async () => {
 
   await runLottery(octokit, config, {
     repository: 'uesteibar/repository',
-    ref: `refs/pull/${prNumber}`
+    ref
   })
 
   getPullMock.done()
@@ -122,7 +122,7 @@ test("doesn't send invalid reviewers if there is no elegible reviewers from one 
 
   await runLottery(octokit, config, {
     repository: 'uesteibar/repository',
-    ref: `refs/pull/${prNumber}`
+    ref
   })
 
   postReviewersMock.done()
@@ -169,7 +169,7 @@ test('selects internal reviewers if configured and author belongs to group', asy
 
   await runLottery(octokit, config, {
     repository: 'uesteibar/repository',
-    ref: `refs/pull/${prNumber}`
+    ref
   })
 
   getPullMock.done()
@@ -217,7 +217,7 @@ test("doesn't assign internal reviewers if the author doesn't belong to group", 
 
   await runLottery(octokit, config, {
     repository: 'uesteibar/repository',
-    ref: `refs/pull/${prNumber}`
+    ref
   })
 
   getPullMock.done()
@@ -249,7 +249,7 @@ test("doesn't assign reviewers if the author doesn't belong to group", async () 
 
   await runLottery(octokit, config, {
     repository: 'uesteibar/repository',
-    ref: `refs/pull/${prNumber}`
+    ref
   })
 
   getPullMock.done()
