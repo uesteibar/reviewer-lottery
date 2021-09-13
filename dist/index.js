@@ -8355,7 +8355,7 @@ class Lottery {
             repository: env.repository,
             ref: env.ref
         };
-        this.pr = null;
+        this.pr = undefined;
     }
     run() {
         return __awaiter(this, void 0, void 0, function* () {
@@ -8442,29 +8442,34 @@ class Lottery {
         return { owner, repo };
     }
     getPRNumber() {
-        return Number(this.env.ref.split('refs/pull/')[1].split('/')[0]);
+        if (!this.pr) {
+            throw new Error('PR not set');
+        }
+        return Number(this.pr.number);
     }
     getPR() {
         return __awaiter(this, void 0, void 0, function* () {
             if (this.pr)
                 return this.pr;
             try {
-                const { data } = yield this.octokit.pulls.get(Object.assign(Object.assign({}, this.getOwnerAndRepo()), { pull_number: this.getPRNumber() // eslint-disable-line @typescript-eslint/camelcase
-                 }));
-                this.pr = data;
+                const { data } = yield this.octokit.pulls.list(Object.assign({}, this.getOwnerAndRepo()));
+                this.pr = data.find(({ head: { ref } }) => ref === this.env.ref);
+                if (!this.pr) {
+                    throw new Error(`PR matching ref not found: ${this.env.ref}`);
+                }
                 return this.pr;
             }
             catch (error) {
                 core.error(error);
                 core.setFailed(error);
-                return null;
+                return undefined;
             }
         });
     }
 }
 exports.runLottery = (octokit, config, env = {
     repository: process.env.GITHUB_REPOSITORY || '',
-    ref: process.env.GITHUB_REF || ''
+    ref: process.env.GITHUB_HEAD_REF || ''
 }) => __awaiter(void 0, void 0, void 0, function* () {
     const lottery = new Lottery({ octokit, config, env });
     yield lottery.run();

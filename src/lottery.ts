@@ -6,6 +6,7 @@ export interface Pull {
   user: {
     login: string
   }
+  number: number
   draft: boolean
 }
 interface Env {
@@ -17,7 +18,7 @@ class Lottery {
   octokit: Octokit
   config: Config
   env: Env
-  pr: Pull | null
+  pr: Pull | undefined
 
   constructor({
     octokit,
@@ -34,7 +35,7 @@ class Lottery {
       repository: env.repository,
       ref: env.ref
     }
-    this.pr = null
+    this.pr = undefined
   }
 
   async run(): Promise<void> {
@@ -136,26 +137,29 @@ class Lottery {
   }
 
   getPRNumber(): number {
-    return Number(this.env.ref.split('refs/pull/')[1].split('/')[0])
+    return Number(this.pr?.number)
   }
 
-  async getPR(): Promise<Pull | null> {
+  async getPR(): Promise<Pull | undefined> {
     if (this.pr) return this.pr
 
     try {
-      const {data} = await this.octokit.pulls.get({
-        ...this.getOwnerAndRepo(),
-        pull_number: this.getPRNumber() // eslint-disable-line @typescript-eslint/camelcase
+      const {data} = await this.octokit.pulls.list({
+        ...this.getOwnerAndRepo()
       })
 
-      this.pr = data
+      this.pr = data.find(({head: {ref}}) => ref === this.env.ref)
+
+      if (!this.pr) {
+        throw new Error(`PR matching ref not found: ${this.env.ref}`)
+      }
 
       return this.pr
     } catch (error) {
       core.error(error)
       core.setFailed(error)
 
-      return null
+      return undefined
     }
   }
 }
@@ -165,7 +169,7 @@ export const runLottery = async (
   config: Config,
   env = {
     repository: process.env.GITHUB_REPOSITORY || '',
-    ref: process.env.GITHUB_REF || ''
+    ref: process.env.GITHUB_HEAD_REF || ''
   }
 ): Promise<void> => {
   const lottery = new Lottery({octokit, config, env})
