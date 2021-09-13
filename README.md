@@ -44,7 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v1
-    - uses: uesteibar/reviewer-lottery@v1
+    - uses: uesteibar/reviewer-lottery@v2
       with:
         repo-token: ${{ secrets.GITHUB_TOKEN }}
 ```
