@@ -76,5 +76,5 @@ Reviewing code is good and fun, but we want to be able to disconnect from time t
 
 **Why on pull_request_target?**
 
-By running this action on `pull_request_target` we enable this aciton to be performed on PRs opened by users with 
+By running this action on `pull_request_target` we enable this action to be performed on PRs opened by users with 
 readonly access to the repo, for example those by Dependabot.
