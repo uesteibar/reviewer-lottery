@@ -75,25 +75,26 @@ class Lottery {
 
   async selectReviewers(): Promise<string[]> {
     let selected: string[] = []
+    
     const author = await this.getPRAuthor()
+    const internalReviewers = this.config.internal_reviewers
+    const totalReviewers = this.config.reviewers
 
     try {
-      for (const {
-        reviewers,
-        internal_reviewers: internalReviewers,
-        usernames
-      } of this.config.groups) {
-        const reviewersToRequest =
-          usernames.includes(author) && internalReviewers
-            ? internalReviewers
-            : reviewers
+      const internalGroup = this.config.groups.filter(item => (item.usernames.indexOf(author) > -1 ))[0]
+      const externalUsernames = this.config.groups
+        .filter(item => (item.usernames.indexOf(author) == -1 ))
+        .map(item => item.usernames)
+        .reduce((a, b) => a.concat(b), [])
+    
+      selected = selected.concat(
+        this.pickRandom(internalGroup.usernames, internalReviewers, author)
+      )
 
-        if (reviewersToRequest) {
-          selected = selected.concat(
-            this.pickRandom(usernames, reviewersToRequest, author)
-          )
-        }
-      }
+      selected = selected.concat(
+        this.pickRandom(externalUsernames, totalReviewers - selected.length, author)
+      )
+
     } catch (error) {
       core.error(error)
       core.setFailed(error)
@@ -105,7 +106,8 @@ class Lottery {
   pickRandom(items: string[], n: number, ignore: string): string[] {
     const picks: string[] = []
 
-    const candidates = items.filter(item => item !== ignore)
+    const codeowners = this.config.codeowners
+    const candidates = items.filter(item => (item !== ignore) && (codeowners.indexOf(item) == -1))
 
     while (picks.length < n) {
       const random = Math.floor(Math.random() * candidates.length)
