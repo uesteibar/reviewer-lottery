@@ -7939,12 +7939,15 @@ exports.getConfig = () => {
     const configPath = core.getInput('config', { required: true });
     try {
         const config = js_yaml_1.default.safeLoad(fs_1.default.readFileSync(configPath, 'utf8'));
+        if (config.in_group_reviewers > config.total_reviewers) {
+            throw new Error('`total_reviewers` has to be greater or equal to `in_group_reviewers`');
+        }
         return config;
     }
     catch (error) {
         core.setFailed(error.message);
     }
-    return { reviewers: 0, internal_reviewers: 0, codeowners: [], groups: [] };
+    return { total_reviewers: 0, in_group_reviewers: 0, codeowners: [], groups: {} };
 };
 
 
@@ -8391,16 +8394,16 @@ class Lottery {
         return __awaiter(this, void 0, void 0, function* () {
             let selected = [];
             const author = yield this.getPRAuthor();
-            const internalReviewers = this.config.internal_reviewers;
-            const totalReviewers = this.config.reviewers;
+            const inGroupReviewersCount = this.config.in_group_reviewers;
+            const totalReviewersCount = this.config.total_reviewers;
+            const groups = Object.values(this.config.groups);
             try {
-                const internalGroup = this.config.groups.filter(item => (item.usernames.indexOf(author) > -1))[0];
-                const externalUsernames = this.config.groups
-                    .filter(item => (item.usernames.indexOf(author) == -1))
-                    .map(item => item.usernames)
+                const inGroupReviewers = groups.filter(item => item.indexOf(author) > -1)[0];
+                const outGroupReviewers = groups
+                    .filter(item => item.indexOf(author) === -1)
                     .reduce((a, b) => a.concat(b), []);
-                selected = selected.concat(this.pickRandom(internalGroup.usernames, internalReviewers, author));
-                selected = selected.concat(this.pickRandom(externalUsernames, totalReviewers - selected.length, author));
+                selected = selected.concat(this.pickRandom(inGroupReviewers, inGroupReviewersCount, author));
+                selected = selected.concat(this.pickRandom(outGroupReviewers, totalReviewersCount - selected.length, author));
             }
             catch (error) {
                 core.error(error);
@@ -8412,7 +8415,7 @@ class Lottery {
     pickRandom(items, n, ignore) {
         const picks = [];
         const codeowners = this.config.codeowners;
-        const candidates = items.filter(item => (item !== ignore) && (codeowners.indexOf(item) == -1));
+        const candidates = items.filter(item => item !== ignore && codeowners.indexOf(item) === -1);
         while (picks.length < n) {
             const random = Math.floor(Math.random() * candidates.length);
             const pick = candidates.splice(random, 1)[0];
