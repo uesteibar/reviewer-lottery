@@ -7939,17 +7939,12 @@ exports.getConfig = () => {
     const configPath = core.getInput('config', { required: true });
     try {
         const config = js_yaml_1.default.safeLoad(fs_1.default.readFileSync(configPath, 'utf8'));
-        for (const group of config.groups) {
-            if (!group.reviewers && !group.internal_reviewers) {
-                throw new Error('One of `reviewers` or `internal_reviewers` should be set');
-            }
-        }
         return config;
     }
     catch (error) {
         core.setFailed(error.message);
     }
-    return { groups: [] };
+    return { reviewers: 0, internal_reviewers: 0, codeowners: [], groups: [] };
 };
 
 
@@ -8396,15 +8391,16 @@ class Lottery {
         return __awaiter(this, void 0, void 0, function* () {
             let selected = [];
             const author = yield this.getPRAuthor();
+            const internalReviewers = this.config.internal_reviewers;
+            const totalReviewers = this.config.reviewers;
             try {
-                for (const { reviewers, internal_reviewers: internalReviewers, usernames } of this.config.groups) {
-                    const reviewersToRequest = usernames.includes(author) && internalReviewers
-                        ? internalReviewers
-                        : reviewers;
-                    if (reviewersToRequest) {
-                        selected = selected.concat(this.pickRandom(usernames, reviewersToRequest, author));
-                    }
-                }
+                const internalGroup = this.config.groups.filter(item => (item.usernames.indexOf(author) > -1))[0];
+                const externalUsernames = this.config.groups
+                    .filter(item => (item.usernames.indexOf(author) == -1))
+                    .map(item => item.usernames)
+                    .reduce((a, b) => a.concat(b), []);
+                selected = selected.concat(this.pickRandom(internalGroup.usernames, internalReviewers, author));
+                selected = selected.concat(this.pickRandom(externalUsernames, totalReviewers - selected.length, author));
             }
             catch (error) {
                 core.error(error);
@@ -8415,7 +8411,8 @@ class Lottery {
     }
     pickRandom(items, n, ignore) {
         const picks = [];
-        const candidates = items.filter(item => item !== ignore);
+        const codeowners = this.config.codeowners;
+        const candidates = items.filter(item => (item !== ignore) && (codeowners.indexOf(item) == -1));
         while (picks.length < n) {
             const random = Math.floor(Math.random() * candidates.length);
             const pick = candidates.splice(random, 1)[0];
@@ -8442,10 +8439,8 @@ class Lottery {
         return { owner, repo };
     }
     getPRNumber() {
-        if (!this.pr) {
-            throw new Error('PR not set');
-        }
-        return Number(this.pr.number);
+        var _a;
+        return Number((_a = this.pr) === null || _a === void 0 ? void 0 : _a.number);
     }
     getPR() {
         return __awaiter(this, void 0, void 0, function* () {
