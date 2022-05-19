@@ -26,5 +26,5 @@ export const getConfig = (): Config => {
     core.setFailed(error.message)
   }
 
-  return {total_reviewers: 0, in_group_reviewers: 0, codeowners: [], groups: {}}
+  return {total_reviewers: 0, in_group_reviewers: 0, codeowners: [], groups: {}} // eslint-disable-line @typescript-eslint/camelcase
 }

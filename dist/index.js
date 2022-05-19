@@ -7947,7 +7947,7 @@ exports.getConfig = () => {
     catch (error) {
         core.setFailed(error.message);
     }
-    return { total_reviewers: 0, in_group_reviewers: 0, codeowners: [], groups: {} };
+    return { total_reviewers: 0, in_group_reviewers: 0, codeowners: [], groups: {} }; // eslint-disable-line @typescript-eslint/camelcase
 };
 
 
@@ -8398,9 +8398,9 @@ class Lottery {
             const totalReviewersCount = this.config.total_reviewers;
             const groups = Object.values(this.config.groups);
             try {
-                const inGroupReviewers = groups.filter(item => item.indexOf(author) > -1)[0];
+                const inGroupReviewers = groups.filter(item => item.includes(author))[0];
                 const outGroupReviewers = groups
-                    .filter(item => item.indexOf(author) === -1)
+                    .filter(item => !item.includes(author))
                     .reduce((a, b) => a.concat(b), []);
                 selected = selected.concat(this.pickRandom(inGroupReviewers, inGroupReviewersCount, author));
                 selected = selected.concat(this.pickRandom(outGroupReviewers, totalReviewersCount - selected.length, author));
@@ -8415,7 +8415,7 @@ class Lottery {
     pickRandom(items, n, ignore) {
         const picks = [];
         const codeowners = this.config.codeowners;
-        const candidates = items.filter(item => item !== ignore && codeowners.indexOf(item) === -1);
+        const candidates = items.filter(item => item !== ignore && !codeowners.includes(item));
         while (picks.length < n) {
             const random = Math.floor(Math.random() * candidates.length);
             const pick = candidates.splice(random, 1)[0];

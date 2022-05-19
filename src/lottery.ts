@@ -82,11 +82,9 @@ class Lottery {
     const groups = Object.values(this.config.groups)
 
     try {
-      const inGroupReviewers = groups.filter(
-        item => item.indexOf(author) > -1
-      )[0]
+      const inGroupReviewers = groups.filter(item => item.includes(author))[0]
       const outGroupReviewers = groups
-        .filter(item => item.indexOf(author) === -1)
+        .filter(item => !item.includes(author))
         .reduce((a, b) => a.concat(b), [])
 
       selected = selected.concat(
@@ -113,7 +111,7 @@ class Lottery {
 
     const codeowners = this.config.codeowners
     const candidates = items.filter(
-      item => item !== ignore && codeowners.indexOf(item) === -1
+      item => item !== ignore && !codeowners.includes(item)
     )
 
     while (picks.length < n) {
