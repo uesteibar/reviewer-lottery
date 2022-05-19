@@ -12,9 +12,9 @@ const config = {
   in_group_reviewers: 1,
   codeowners: ['B', 'C'],
   groups: {
-    GroupA: ['A, B'],
-    GroupB: ['C, D'],
-    GroupC: ['E, F']
+    GroupA: ['A', 'B'],
+    GroupB: ['C', 'D'],
+    GroupC: ['E', 'F']
   }
 }
 
