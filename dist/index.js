@@ -8398,7 +8398,7 @@ class Lottery {
             const totalReviewersCount = this.config.total_reviewers;
             const groups = Object.values(this.config.groups);
             try {
-                const inGroupReviewers = groups.filter(item => item.includes(author))[0];
+                const inGroupReviewers = groups.filter(item => item.includes(author))[0] || [];
                 const outGroupReviewers = groups
                     .filter(item => !item.includes(author))
                     .reduce((a, b) => a.concat(b), []);
@@ -8416,6 +8416,8 @@ class Lottery {
         const picks = [];
         const codeowners = this.config.codeowners;
         const candidates = items.filter(item => item !== ignore && !codeowners.includes(item));
+        if (candidates.length === 0)
+            return [];
         while (picks.length < n) {
             const random = Math.floor(Math.random() * candidates.length);
             const pick = candidates.splice(random, 1)[0];
