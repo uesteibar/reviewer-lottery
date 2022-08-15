@@ -8441,7 +8441,13 @@ class Lottery {
     }
     getOwnerAndRepo() {
         const [owner, repo] = this.env.repository.split('/');
-        return { owner, repo };
+        if (this.env.ref) {
+            const head = `${owner}:${this.env.ref}`;
+            return { owner, repo, head };
+        }
+        else {
+            return { owner, repo };
+        }
     }
     getPRNumber() {
         var _a;
