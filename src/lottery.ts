@@ -140,10 +140,15 @@ class Lottery {
     return ''
   }
 
-  getOwnerAndRepo(): {owner: string; repo: string} {
+  getOwnerAndRepo(): {owner: string; repo: string; head?: string} {
     const [owner, repo] = this.env.repository.split('/')
 
-    return {owner, repo}
+    if (this.env.ref) {
+      const head = `${owner}:${this.env.ref}`
+      return {owner, repo, head}
+    } else {
+      return {owner, repo}
+    }
   }
 
   getPRNumber(): number {
