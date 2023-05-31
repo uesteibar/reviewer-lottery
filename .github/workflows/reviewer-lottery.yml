@@ -1,0 +1,12 @@
+name: "Reviewer lottery"
+on:
+  push:
+
+jobs:
+  assign_reviewers:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v1
+    - uses: uesteibar/reviewer-lottery@#bump-node
+      with:
+        repo-token: ${{ secrets.GITHUB_TOKEN }}
