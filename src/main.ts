@@ -13,7 +13,7 @@ async function run(): Promise<void> {
     const config = getConfig()
 
     await runLottery(new Octokit({auth: token}), config)
-  } catch (error) {
+  } catch (error: any) {
     core.setFailed(error.message)
   }
 }
