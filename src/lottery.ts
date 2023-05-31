@@ -3,11 +3,9 @@ import {Octokit} from '@octokit/rest'
 import {Config} from './config'
 
 export interface Pull {
-  user: {
-    login: string
-  }
+  user: {login: string} | null
   number: number
-  draft: boolean
+  draft?: boolean
 }
 interface Env {
   repository: string
@@ -18,7 +16,7 @@ class Lottery {
   octokit: Octokit
   config: Config
   env: Env
-  pr: Pull | undefined
+  pr: Pull | undefined | null
 
   constructor({
     octokit,
@@ -45,7 +43,7 @@ class Lottery {
         const reviewers = await this.selectReviewers()
         reviewers.length > 0 && (await this.setReviewers(reviewers))
       }
-    } catch (error) {
+    } catch (error: any) {
       core.error(error)
       core.setFailed(error)
     }
@@ -55,7 +53,7 @@ class Lottery {
     try {
       const pr = await this.getPR()
       return !!pr && !pr.draft
-    } catch (error) {
+    } catch (error: any) {
       core.error(error)
       core.setFailed(error)
       return false
@@ -94,7 +92,7 @@ class Lottery {
           )
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       core.error(error)
       core.setFailed(error)
     }
@@ -121,8 +119,8 @@ class Lottery {
     try {
       const pr = await this.getPR()
 
-      return pr ? pr.user.login : ''
-    } catch (error) {
+      return pr && pr.user ? pr.user.login : ''
+    } catch (error: any) {
       core.error(error)
       core.setFailed(error)
     }
@@ -155,7 +153,7 @@ class Lottery {
       }
 
       return this.pr
-    } catch (error) {
+    } catch (error: any) {
       core.error(error)
       core.setFailed(error)
 
