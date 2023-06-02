@@ -88,7 +88,7 @@ class Lottery {
 
         if (reviewersToRequest) {
           selected = selected.concat(
-            this.pickRandom(usernames, reviewersToRequest, author)
+            this.pickRandom(usernames, reviewersToRequest, selected.concat(author))
           )
         }
       }
@@ -100,10 +100,10 @@ class Lottery {
     return selected
   }
 
-  pickRandom(items: string[], n: number, ignore: string): string[] {
+  pickRandom(items: string[], n: number, ignore: string[]): string[] {
     const picks: string[] = []
 
-    const candidates = items.filter(item => item !== ignore)
+    const candidates = items.filter(item => !ignore.includes(item));
 
     while (picks.length < n) {
       const random = Math.floor(Math.random() * candidates.length)
