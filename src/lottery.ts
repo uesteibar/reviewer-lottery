@@ -6,6 +6,7 @@ export interface Pull {
   user: {login: string} | null
   number: number
   draft?: boolean
+  labels?: {name: string}[] | null
 }
 interface Env {
   repository: string
@@ -79,17 +80,22 @@ class Lottery {
       for (const {
         reviewers,
         internal_reviewers: internalReviewers,
-        usernames
+        usernames,
+        matchLabel
       } of this.config.groups) {
-        const reviewersToRequest =
-          usernames.includes(author) && internalReviewers
-            ? internalReviewers
-            : reviewers
+        const labels = this.getPRLabels()
+        const shouldRunForGroup = matchLabel === undefined || labels.length === 0 || labels.includes(matchLabel)
+        if (shouldRunForGroup) {
+          const reviewersToRequest =
+            usernames.includes(author) && internalReviewers
+              ? internalReviewers
+              : reviewers
 
-        if (reviewersToRequest) {
-          selected = selected.concat(
-            this.pickRandom(usernames, reviewersToRequest, selected.concat(author))
-          )
+          if (reviewersToRequest) {
+            selected = selected.concat(
+              this.pickRandom(usernames, reviewersToRequest, selected.concat(author))
+            )
+          }
         }
       }
     } catch (error: any) {
@@ -136,6 +142,16 @@ class Lottery {
 
   getPRNumber(): number {
     return Number(this.pr?.number)
+  }
+
+  getPRLabels(): string[] {
+    const labels = this.pr?.labels?.map((label) => label.name)
+
+    if (labels) {
+      return labels
+    } else {
+      return []
+    } 
   }
 
   async getPR(): Promise<Pull | undefined> {
