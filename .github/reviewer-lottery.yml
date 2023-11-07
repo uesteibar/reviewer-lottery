@@ -10,3 +10,14 @@ groups:
     usernames:
       - tebs
 
+  - id: get-members
+    uses: garnertb/get-team-members@v1
+    with:
+      org: garnertb-io
+      team_slug: ops
+      role: maintainer
+      token: ${{ secrets.GITHUB_TOKEN }}
+
+  # print results
+  - run: "echo ${{ steps.get-members.outputs.members }}"
+    shell: bash
