@@ -12,5 +12,5 @@ inputs:
     description: 'Path to config file'
     default: '.github/reviewer-lottery.yml'
 runs:
-  using: 'node16'
+  using: 'node20'
   main: 'dist/index.js'
