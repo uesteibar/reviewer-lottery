@@ -78,7 +78,7 @@ const givenGitHubAPI = () => {
 			.reply(200, { number: TEST_CONFIG.PR_NUMBER });
 	};
 
-	const setupExistingReviewers = (existingReviewers: string[]) => {
+	const setupExistingReviewers = (existingReviewers: string[] = []) => {
 		return nock("https://api.github.com")
 			.get(
 				`/repos/${TEST_CONFIG.REPOSITORY}/pulls/${TEST_CONFIG.PR_NUMBER}/requested_reviewers`,
@@ -117,6 +117,17 @@ const whenLotteryRuns = async (config: {
 };
 
 describe("Reviewer Lottery System", () => {
+	beforeEach(() => {
+		// Setup default empty existing reviewers response that persists for all tests
+		nock("https://api.github.com")
+			.persist()
+			.get(`/repos/${TEST_CONFIG.REPOSITORY}/pulls/${TEST_CONFIG.PR_NUMBER}/requested_reviewers`)
+			.reply(200, {
+				users: [],
+				teams: [],
+			});
+	});
+
 	afterEach(() => {
 		nock.cleanAll();
 	});
@@ -643,6 +654,373 @@ describe("Reviewer Lottery System", () => {
 			await whenLotteryRuns(configWithRules);
 
 			// Then: additional reviewers are selected based on remaining need
+			pullMock.done();
+			existingReviewersMock.done();
+			reviewerMock.done();
+		});
+
+		test("handles existing reviewers with default rule fallback", async () => {
+			// Given: author with no specific group rules, falling back to default
+			const scenario = createScenario({
+				author: "alice",
+				teams: [
+					{
+						name: "backend-team",
+						members: ["alice", "bob", "charlie"],
+					},
+					{
+						name: "frontend-team",
+						members: ["diana", "eve", "frank"],
+					},
+					{
+						name: "ops-team",
+						members: ["george", "helen"],
+					},
+				],
+			});
+
+			const configWithRules = {
+				...scenario.config,
+				selection_rules: {
+					default: {
+						from: {
+							"frontend-team": 2,
+							"ops-team": 1,
+						},
+					},
+					by_author_group: [
+						{
+							group: "other-team", // No rule for backend-team, so will use default
+							from: {
+								"other-team": 1,
+							},
+						},
+					],
+				},
+			};
+
+			const api = givenGitHubAPI();
+			const pullMock = api.setupPullRequest(scenario.pull);
+			const existingReviewersMock = api.setupExistingReviewers([
+				"diana",
+				"george",
+			]); // 1 from frontend, 1 from ops (requirements already met)
+			
+			// Expect no new reviewer assignment since default rule requirements are met
+			// No expectReviewerAssignment call since no reviewers should be selected
+
+			// When: Alice (backend member) opens PR, falls back to default rule
+			await whenLotteryRuns(configWithRules);
+
+			// Then: no additional reviewers are selected as requirements are met
+			pullMock.done();
+			existingReviewersMock.done();
+		});
+
+		test("handles existing reviewers with wildcard (*) selection", async () => {
+			// Given: configuration using "*" keyword with existing reviewers
+			const scenario = createScenario({
+				author: "alice",
+				teams: [
+					{
+						name: "backend-team",
+						members: ["alice", "bob", "charlie"],
+					},
+					{
+						name: "frontend-team",
+						members: ["diana", "eve"],
+					},
+					{
+						name: "ops-team",
+						members: ["frank", "george"],
+					},
+				],
+			});
+
+			const configWithRules = {
+				...scenario.config,
+				selection_rules: {
+					by_author_group: [
+						{
+							group: "backend-team",
+							from: {
+								"*": 4, // Want 4 reviewers from all groups
+							},
+						},
+					],
+				},
+			};
+
+			const api = givenGitHubAPI();
+			const pullMock = api.setupPullRequest(scenario.pull);
+			const existingReviewersMock = api.setupExistingReviewers([
+				"diana", // 1 from frontend
+				"frank", // 1 from ops
+			]); // 2 existing, need 2 more
+			const reviewerMock = api.expectReviewerAssignment({
+				count: 2, // Should select 2 more (4 required - 2 existing = 2)
+				shouldExclude: ["alice", "diana", "frank"], // Exclude author and existing reviewers
+			});
+
+			// When: Alice opens PR with wildcard selection and existing reviewers
+			await whenLotteryRuns(configWithRules);
+
+			// Then: additional reviewers are selected to meet total requirement
+			pullMock.done();
+			existingReviewersMock.done();
+			reviewerMock.done();
+		});
+
+		test("handles existing reviewers with exclusion (!group) selection", async () => {
+			// Given: configuration using "!group" keyword with existing reviewers
+			const scenario = createScenario({
+				author: "alice",
+				teams: [
+					{
+						name: "backend-team",
+						members: ["alice", "bob", "charlie"],
+					},
+					{
+						name: "frontend-team",
+						members: ["diana", "eve"],
+					},
+					{
+						name: "ops-team",
+						members: ["frank", "george"],
+					},
+				],
+			});
+
+			const configWithRules = {
+				...scenario.config,
+				selection_rules: {
+					by_author_group: [
+						{
+							group: "backend-team",
+							from: {
+								"backend-team": 1, // 1 from backend
+								"!backend-team": 2, // 2 from non-backend groups
+							},
+						},
+					],
+				},
+			};
+
+			const api = givenGitHubAPI();
+			const pullMock = api.setupPullRequest(scenario.pull);
+			const existingReviewersMock = api.setupExistingReviewers([
+				"bob", // 1 from backend (requirement met)
+				"diana", // 1 from frontend (1 more needed from non-backend)
+			]);
+			const reviewerMock = api.expectReviewerAssignment({
+				count: 1, // Should select 1 more from non-backend groups
+				shouldExclude: ["alice", "bob", "diana"], // Exclude author and existing reviewers
+			});
+
+			// When: Alice opens PR with exclusion selection and existing reviewers
+			await whenLotteryRuns(configWithRules);
+
+			// Then: additional reviewers are selected from non-backend groups only
+			pullMock.done();
+			existingReviewersMock.done();
+			reviewerMock.done();
+		});
+
+		test("handles existing reviewers not in any configured group", async () => {
+			// Given: existing reviewers include users not in any group
+			const scenario = createScenario({
+				author: "alice",
+				teams: [
+					{
+						name: "backend-team",
+						members: ["alice", "bob", "charlie"],
+					},
+					{
+						name: "frontend-team",
+						members: ["diana", "eve"],
+					},
+				],
+			});
+
+			const configWithRules = {
+				...scenario.config,
+				selection_rules: {
+					by_author_group: [
+						{
+							group: "backend-team",
+							from: {
+								"backend-team": 2,
+								"frontend-team": 1,
+							},
+						},
+					],
+				},
+			};
+
+			const api = givenGitHubAPI();
+			const pullMock = api.setupPullRequest(scenario.pull);
+			const existingReviewersMock = api.setupExistingReviewers([
+				"bob", // 1 from backend (need 1 more)
+				"external-user", // Not in any group (should be ignored in counting)
+			]);
+			const reviewerMock = api.expectReviewerAssignment({
+				count: 2, // Should select 1 more from backend + 1 from frontend
+				shouldExclude: ["alice", "bob", "external-user"], // Exclude author and all existing reviewers
+			});
+
+			// When: Alice opens PR with mix of group members and external reviewers
+			await whenLotteryRuns(configWithRules);
+
+			// Then: external reviewers are ignored in group counting
+			pullMock.done();
+			existingReviewersMock.done();
+			reviewerMock.done();
+		});
+
+		test("handles case where existing reviewers exceed requirements", async () => {
+			// Given: more existing reviewers than required
+			const scenario = createScenario({
+				author: "alice",
+				teams: [
+					{
+						name: "backend-team",
+						members: ["alice", "bob", "charlie", "diana"],
+					},
+				],
+			});
+
+			const configWithRules = {
+				...scenario.config,
+				selection_rules: {
+					by_author_group: [
+						{
+							group: "backend-team",
+							from: {
+								"backend-team": 2, // Want only 2 reviewers
+							},
+						},
+					],
+				},
+			};
+
+			const api = givenGitHubAPI();
+			const pullMock = api.setupPullRequest(scenario.pull);
+			const existingReviewersMock = api.setupExistingReviewers([
+				"bob",
+				"charlie", 
+				"diana", // 3 existing reviewers (more than required 2)
+			]);
+			
+			// Expect no new reviewer assignment since requirement is already exceeded
+			// No expectReviewerAssignment call since no reviewers should be selected
+
+			// When: Alice opens PR with more reviewers than required
+			await whenLotteryRuns(configWithRules);
+
+			// Then: no additional reviewers are selected
+			pullMock.done();
+			existingReviewersMock.done();
+		});
+
+		test("handles API error when fetching existing reviewers gracefully", async () => {
+			// Given: API error when fetching existing reviewers
+			const scenario = createScenario({
+				author: "alice",
+				teams: [
+					{
+						name: "backend-team",
+						members: ["alice", "bob", "charlie"],
+					},
+				],
+			});
+
+			const configWithRules = {
+				...scenario.config,
+				selection_rules: {
+					by_author_group: [
+						{
+							group: "backend-team",
+							from: {
+								"backend-team": 2,
+							},
+						},
+					],
+				},
+			};
+
+			const api = givenGitHubAPI();
+			const pullMock = api.setupPullRequest(scenario.pull);
+			
+			// Mock API error for existing reviewers request
+			const existingReviewersErrorMock = nock("https://api.github.com")
+				.get(`/repos/${TEST_CONFIG.REPOSITORY}/pulls/${TEST_CONFIG.PR_NUMBER}/requested_reviewers`)
+				.reply(500, { message: "Internal Server Error" });
+
+			// Should still proceed with normal reviewer selection (treating as no existing reviewers)
+			const reviewerMock = api.expectReviewerAssignment({
+				count: 2, // Should select 2 reviewers as if no existing reviewers
+				shouldExclude: ["alice"], // Only exclude author
+			});
+
+			// When: API error occurs while fetching existing reviewers
+			await whenLotteryRuns(configWithRules);
+
+			// Then: system gracefully handles error and proceeds with selection
+			pullMock.done();
+			existingReviewersErrorMock.done();
+			reviewerMock.done();
+		});
+
+		test("handles empty groups with existing reviewers", async () => {
+			// Given: configuration with empty groups and existing reviewers
+			const scenario = createScenario({
+				author: "alice",
+				teams: [
+					{
+						name: "backend-team",
+						members: ["alice", "bob"],
+					},
+					{
+						name: "frontend-team",
+						members: [], // Empty group
+					},
+					{
+						name: "ops-team",
+						members: ["charlie"],
+					},
+				],
+			});
+
+			const configWithRules = {
+				...scenario.config,
+				selection_rules: {
+					by_author_group: [
+						{
+							group: "backend-team",
+							from: {
+								"backend-team": 1,
+								"frontend-team": 2, // Can't select from empty group
+								"ops-team": 1,
+							},
+						},
+					],
+				},
+			};
+
+			const api = givenGitHubAPI();
+			const pullMock = api.setupPullRequest(scenario.pull);
+			const existingReviewersMock = api.setupExistingReviewers([
+				"charlie", // 1 from ops (ops requirement met)
+			]);
+			const reviewerMock = api.expectReviewerAssignment({
+				count: 1, // Should select 1 from backend (frontend impossible, ops already satisfied)
+				shouldExclude: ["alice", "charlie"], // Exclude author and existing reviewers
+			});
+
+			// When: Alice opens PR with empty groups in configuration
+			await whenLotteryRuns(configWithRules);
+
+			// Then: system handles empty groups gracefully
 			pullMock.done();
 			existingReviewersMock.done();
 			reviewerMock.done();
