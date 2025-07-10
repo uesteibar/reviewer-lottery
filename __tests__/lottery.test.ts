@@ -18,14 +18,12 @@ interface TestScenario {
 		name: string;
 		members: string[];
 	}>;
-	prState?: "draft" | "ready";
 }
 
 const createScenario = (scenario: TestScenario) => {
 	const pull: Pull = {
 		number: TEST_CONFIG.PR_NUMBER,
 		user: { login: scenario.author },
-		draft: scenario.prState === "draft",
 	};
 
 	const config = {
@@ -195,46 +193,6 @@ describe("Reviewer Lottery System", () => {
 			// Then: reviewers are selected from both teams without duplicates
 			pullMock.done();
 			reviewerMock.done();
-		});
-	});
-
-	describe("Draft PR workflow", () => {
-		test("skips reviewer assignment for draft PRs", async () => {
-			// Given: a team that normally assigns reviewers
-			const scenario = createScenario({
-				author: "bob",
-				teams: [
-					{
-						name: "dev-team",
-						members: ["alice", "bob", "charlie"],
-					},
-				],
-				prState: "draft",
-			});
-
-			const configWithRules = {
-				...scenario.config,
-				selection_rules: {
-					by_author_group: [
-						{
-							group: "dev-team",
-							from: {
-								"dev-team": 2,
-							},
-						},
-					],
-				},
-			};
-
-			const api = givenGitHubAPI();
-			const pullMock = api.setupPullRequest(scenario.pull);
-
-			// When: Bob opens a draft PR and the lottery runs
-			await whenLotteryRuns(configWithRules);
-
-			// Then: no reviewers are assigned (draft PRs don't need review yet)
-			pullMock.done();
-			// No reviewer assignment call should have been made
 		});
 	});
 

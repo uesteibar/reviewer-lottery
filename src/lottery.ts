@@ -5,7 +5,6 @@ import type { Config } from "./config";
 export interface Pull {
 	user: { login: string } | null;
 	number: number;
-	draft?: boolean;
 }
 interface Env {
 	repository: string;
@@ -52,7 +51,7 @@ class Lottery {
 	async isReadyToReview(): Promise<boolean> {
 		try {
 			const pr = await this.getPR();
-			return !!pr && !pr.draft;
+			return !!pr;
 		} catch (error: unknown) {
 			core.error(error instanceof Error ? error.message : String(error));
 			core.setFailed(error instanceof Error ? error.message : String(error));
