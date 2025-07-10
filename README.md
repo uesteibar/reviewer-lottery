@@ -4,32 +4,90 @@ This is a github action to add automatic reviewer lottery to your pull requests.
 
 Add your configuration on `.github/reviewer-lottery.yml`
 
+## Configuration
+
+The configuration uses `selection_rules` to provide maximum flexibility for reviewer assignment:
+
 ```yaml
 groups:
-  - name: devs # name of the group
-    reviewers: 2 # how many reviewers do you want to assign?
-    internal_reviewers: 1 # how many reviewers do you want to assign when the PR author belongs to this group?
-    usernames: # github usernames of the reviewers
-      - uesteibar
-      - tebs
-      - rudeayelo
-      - marciobarrios
-
-  - name: qas # you can have multiple groups, it will evaluate them separately
-    reviewers: 1
+  - name: backend
     usernames:
-      - some_user
-      - someoneelse
+      - alice
+      - bob
+      - charlie
+  - name: frontend
+    usernames:
+      - diana
+      - eve
+  - name: ops
+    usernames:
+      - frank
+      - grace
+
+selection_rules:
+  # Default rules for authors not in any group or when no group-specific rule exists
+  default:
+    from:
+      backend: 1      # 1 reviewer from backend team
+      frontend: 2     # 2 reviewers from frontend team
+
+  # Rules for authors who are not members of any group
+  non_group_members:
+    from:
+      backend: 1      # 1 reviewer from backend team
+      ops: 1          # 1 reviewer from ops team
+
+  # Group-specific rules based on PR author's group membership
+  by_author_group:
+    - group: backend
+      from:
+        backend: 2    # 2 reviewers from same team
+        frontend: 1   # 1 reviewer from frontend team
+    
+    - group: frontend
+      from:
+        "*": 2        # 2 reviewers from any group
+    
+    - group: ops
+      from:
+        ops: 2        # 2 reviewers from ops team
+        "!ops": 1     # 1 reviewer from any team except ops
 ```
 
-About `reviewers` and `internal_reviewers`: they can both be set, or only one of them, with the following behavior:
-- Both set:
-  - If the PR author belongs to the group, it will use `internal_reviewers`.
-  - If the PR author doesn't belong to the group, it will use `reviewers`.
-- Only `reviewer` set: it will always use `reviewer`, no matter if the PR author belongs to the group or not.
-- Only `internal_reviewers` set:
-  - If the PR author belongs to the group, it will use `internal_reviewers`.
-  - If the PR author doesn't belong to the group, it won't assign any reviewer.
+#### Priority Rules
+
+When assigning reviewers, the following priority is used:
+
+1. **For authors in a group**: Looks for matching rule in `by_author_group`, falls back to `default`
+2. **For authors not in any group**: Uses `non_group_members` if defined, falls back to `default`
+3. **No reviewers assigned**: If no `from` clause is found or is empty
+
+#### Special Keywords
+
+- **`"*"`** - Select from all groups
+- **`"!groupname"`** - Select from all groups except the specified one
+
+#### Examples
+
+```yaml
+# Example 1: Team members get internal + external review
+- group: backend
+  from:
+    backend: 2      # 2 from same team
+    frontend: 1     # 1 from frontend team
+
+# Example 2: All groups participate
+- group: frontend
+  from:
+    "*": 3          # 3 reviewers from any group
+
+# Example 3: Exclude specific groups
+- group: ops
+  from:
+    ops: 1          # 1 from ops team
+    "!ops": 2       # 2 from any other team
+```
+
 
 The ideal workflow configuration is:
 
