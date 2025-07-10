@@ -70,12 +70,32 @@ class Lottery {
 		});
 	}
 
+	async getExistingReviewers(): Promise<string[]> {
+		const ownerAndRepo = this.getOwnerAndRepo();
+		const pr = this.getPRNumber();
+
+		try {
+			const { data } = await this.octokit.pulls.listRequestedReviewers({
+				...ownerAndRepo,
+				pull_number: pr,
+			});
+
+			return data.users.map((user) => user.login);
+		} catch (error: unknown) {
+			core.error(
+				`Failed to get existing reviewers: ${error instanceof Error ? error.message : String(error)}`,
+			);
+			return [];
+		}
+	}
+
 	async selectReviewers(): Promise<string[]> {
 		const author = await this.getPRAuthor();
+		const existingReviewers = await this.getExistingReviewers();
 
 		try {
 			if (this.config.selection_rules) {
-				return this.selectReviewersWithRules(author);
+				return this.selectReviewersWithRules(author, existingReviewers);
 			}
 
 			return [];
@@ -86,7 +106,10 @@ class Lottery {
 		}
 	}
 
-	private selectReviewersWithRules(author: string): string[] {
+	private selectReviewersWithRules(
+		author: string,
+		existingReviewers: string[],
+	): string[] {
 		const authorGroup = this.getAuthorGroup(author);
 		const rules = this.config.selection_rules;
 
@@ -114,13 +137,19 @@ class Lottery {
 			return [];
 		}
 
-		return this.selectFromMultipleGroups(fromClause, author, authorGroup);
+		return this.selectFromMultipleGroups(
+			fromClause,
+			author,
+			authorGroup,
+			existingReviewers,
+		);
 	}
 
 	private selectFromMultipleGroups(
 		fromClause: Record<string, number>,
 		author: string,
 		authorGroup: string | null,
+		existingReviewers: string[],
 	): string[] {
 		let selected: string[] = [];
 
@@ -130,8 +159,22 @@ class Lottery {
 			const targetGroups = this.resolveGroupSelection(groupKey, authorGroup);
 			const candidates = this.getCandidatesFromGroups(targetGroups);
 
-			const picks = this.pickRandom(candidates, count, selected.concat(author));
-			selected = selected.concat(picks);
+			// Count existing reviewers from the target groups
+			const existingFromGroups = existingReviewers.filter((reviewer) =>
+				candidates.includes(reviewer),
+			);
+
+			// Calculate how many more reviewers we need from this group
+			const remainingNeeded = Math.max(0, count - existingFromGroups.length);
+
+			if (remainingNeeded > 0) {
+				const picks = this.pickRandom(
+					candidates,
+					remainingNeeded,
+					selected.concat(author, ...existingReviewers),
+				);
+				selected = selected.concat(picks);
+			}
 		}
 
 		return selected;
