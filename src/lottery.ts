@@ -219,7 +219,7 @@ class Lottery {
 
 		const candidates = items.filter((item) => !ignore.includes(item));
 
-		while (picks.length < n) {
+		while (picks.length < n && candidates.length > 0) {
 			const random = Math.floor(Math.random() * candidates.length);
 			const pick = candidates.splice(random, 1)[0];
 
