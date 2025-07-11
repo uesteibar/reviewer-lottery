@@ -12,7 +12,8 @@
 			"!dist/**",
 			"!node_modules/**",
 			"!lib/**",
-			"!**/*.min.js"
+			"!**/*.min.js",
+			"!coverage/**"
 		]
 	},
 	"formatter": {

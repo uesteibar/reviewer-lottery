@@ -1,6 +1,6 @@
 import { Octokit } from "@octokit/rest";
 import nock from "nock";
-import { type Pull, runLottery, Lottery } from "../src/lottery";
+import { Lottery, type Pull, runLottery } from "../src/lottery";
 
 // Mock @actions/core to prevent error messages during tests
 jest.mock("@actions/core", () => ({
@@ -63,10 +63,13 @@ const givenGitHubAPI = () => {
 				`/repos/${TEST_CONFIG.REPOSITORY}/pulls/${TEST_CONFIG.PR_NUMBER}/requested_reviewers`,
 			)
 			.reply(200, (_uri, requestBody) => {
-				let body: any;
+				let body: unknown;
 				try {
-					body = typeof requestBody === 'string' ? JSON.parse(requestBody) : requestBody;
-				} catch (error) {
+					body =
+						typeof requestBody === "string"
+							? JSON.parse(requestBody)
+							: requestBody;
+				} catch (_error) {
 					body = requestBody;
 				}
 				const { reviewers } = body;
@@ -150,8 +153,8 @@ describe("Reviewer Lottery System", () => {
 		nock.restore();
 		// Ensure no pending interceptors
 		if (!nock.isDone()) {
-			nock.pendingMocks().forEach(mock => {
-				console.warn('Pending mock:', mock);
+			nock.pendingMocks().forEach((mock) => {
+				console.warn("Pending mock:", mock);
 			});
 		}
 	});
@@ -184,9 +187,9 @@ describe("Reviewer Lottery System", () => {
 			};
 
 			const api = givenGitHubAPI();
-			const pullMock = api.setupPullRequest(scenario.pull);
-			const existingReviewersMock = api.setupExistingReviewers(); // Empty existing reviewers
-			const reviewerMock = api.expectReviewerAssignment({
+			const _pullMock = api.setupPullRequest(scenario.pull);
+			const _existingReviewersMock = api.setupExistingReviewers(); // Empty existing reviewers
+			const _reviewerMock = api.expectReviewerAssignment({
 				count: 2,
 				shouldExclude: ["alice"], // Author should never be assigned as reviewer
 				validCandidates: ["bob", "charlie", "diana"], // Available from backend-team
@@ -231,9 +234,9 @@ describe("Reviewer Lottery System", () => {
 			};
 
 			const api = givenGitHubAPI();
-			const pullMock = api.setupPullRequest(scenario.pull);
-			const existingReviewersMock = api.setupExistingReviewers(); // Empty existing reviewers
-			const reviewerMock = api.expectReviewerAssignment({
+			const _pullMock = api.setupPullRequest(scenario.pull);
+			const _existingReviewersMock = api.setupExistingReviewers(); // Empty existing reviewers
+			const _reviewerMock = api.expectReviewerAssignment({
 				count: 4, // 2 from each team
 				shouldExclude: ["eve"], // Author excluded
 				validCandidates: ["alice", "bob", "charlie", "diana"], // Available from both teams
@@ -280,9 +283,9 @@ describe("Reviewer Lottery System", () => {
 			};
 
 			const api = givenGitHubAPI();
-			const pullMock = api.setupPullRequest(scenario.pull);
-			const existingReviewersMock = api.setupExistingReviewers(); // Empty existing reviewers
-			const reviewerMock = api.expectReviewerAssignment({
+			const _pullMock = api.setupPullRequest(scenario.pull);
+			const _existingReviewersMock = api.setupExistingReviewers(); // Empty existing reviewers
+			const _reviewerMock = api.expectReviewerAssignment({
 				count: 1, // Only bob can be assigned
 				shouldInclude: ["bob"],
 				shouldExclude: ["alice"],
@@ -328,9 +331,9 @@ describe("Reviewer Lottery System", () => {
 				};
 
 				const api = givenGitHubAPI();
-				const pullMock = api.setupPullRequest(scenario.pull);
-				const existingReviewersMock = api.setupExistingReviewers(); // Empty existing reviewers
-				const reviewerMock = api.expectReviewerAssignment({
+				const _pullMock = api.setupPullRequest(scenario.pull);
+				const _existingReviewersMock = api.setupExistingReviewers(); // Empty existing reviewers
+				const _reviewerMock = api.expectReviewerAssignment({
 					count: 3, // 1 from backend + 2 from frontend
 					shouldExclude: ["external-contributor"],
 					validCandidates: ["alice", "bob", "charlie", "diana"], // Available from both teams
@@ -383,9 +386,9 @@ describe("Reviewer Lottery System", () => {
 				};
 
 				const api = givenGitHubAPI();
-				const pullMock = api.setupPullRequest(scenario.pull);
-				const existingReviewersMock = api.setupExistingReviewers(); // Empty existing reviewers
-				const reviewerMock = api.expectReviewerAssignment({
+				const _pullMock = api.setupPullRequest(scenario.pull);
+				const _existingReviewersMock = api.setupExistingReviewers(); // Empty existing reviewers
+				const _reviewerMock = api.expectReviewerAssignment({
 					count: 3, // 2 from backend + 1 from frontend
 					shouldExclude: ["alice"],
 					validCandidates: ["bob", "charlie", "diana", "eve"], // Available from both teams
@@ -435,12 +438,12 @@ describe("Reviewer Lottery System", () => {
 				};
 
 				const api = givenGitHubAPI();
-				const pullMock = api.setupPullRequest(scenario.pull);
-				const existingReviewersMock = api.setupExistingReviewers(); // Empty existing reviewers
-				const reviewerMock = api.expectReviewerAssignment({
+				const _pullMock = api.setupPullRequest(scenario.pull);
+				const _existingReviewersMock = api.setupExistingReviewers(); // Empty existing reviewers
+				const _reviewerMock = api.expectReviewerAssignment({
 					count: 3,
 					shouldExclude: ["alice"],
-				validCandidates: ["bob", "charlie", "diana", "eve", "frank"], // Available from all teams
+					validCandidates: ["bob", "charlie", "diana", "eve", "frank"], // Available from all teams
 				});
 
 				// When: backend team member opens PR
@@ -486,12 +489,12 @@ describe("Reviewer Lottery System", () => {
 				};
 
 				const api = givenGitHubAPI();
-				const pullMock = api.setupPullRequest(scenario.pull);
-				const existingReviewersMock = api.setupExistingReviewers(); // Empty existing reviewers
-				const reviewerMock = api.expectReviewerAssignment({
+				const _pullMock = api.setupPullRequest(scenario.pull);
+				const _existingReviewersMock = api.setupExistingReviewers(); // Empty existing reviewers
+				const _reviewerMock = api.expectReviewerAssignment({
 					count: 3,
 					shouldExclude: ["alice"],
-				validCandidates: ["bob", "charlie", "diana", "eve", "frank"], // Available from all teams
+					validCandidates: ["bob", "charlie", "diana", "eve", "frank"], // Available from all teams
 				});
 
 				// When: backend team member opens PR
@@ -531,9 +534,9 @@ describe("Reviewer Lottery System", () => {
 			};
 
 			const api = givenGitHubAPI();
-			const pullMock = api.setupPullRequest(scenario.pull);
-			const existingReviewersMock = api.setupExistingReviewers(["bob"]); // Bob is already assigned
-			const reviewerMock = api.expectReviewerAssignment({
+			const _pullMock = api.setupPullRequest(scenario.pull);
+			const _existingReviewersMock = api.setupExistingReviewers(["bob"]); // Bob is already assigned
+			const _reviewerMock = api.expectReviewerAssignment({
 				count: 1, // Should only select 1 more (2 required - 1 existing = 1)
 				shouldExclude: ["alice", "bob"], // Exclude author and existing reviewer
 				validCandidates: ["charlie", "diana"], // Available from backend-team
@@ -573,8 +576,8 @@ describe("Reviewer Lottery System", () => {
 			};
 
 			const api = givenGitHubAPI();
-			const pullMock = api.setupPullRequest(scenario.pull);
-			const existingReviewersMock = api.setupExistingReviewers([
+			const _pullMock = api.setupPullRequest(scenario.pull);
+			const _existingReviewersMock = api.setupExistingReviewers([
 				"bob",
 				"charlie",
 			]); // 2 already assigned
@@ -621,12 +624,12 @@ describe("Reviewer Lottery System", () => {
 			};
 
 			const api = givenGitHubAPI();
-			const pullMock = api.setupPullRequest(scenario.pull);
-			const existingReviewersMock = api.setupExistingReviewers([
+			const _pullMock = api.setupPullRequest(scenario.pull);
+			const _existingReviewersMock = api.setupExistingReviewers([
 				"bob",
 				"diana",
 			]); // 1 from each group
-			const reviewerMock = api.expectReviewerAssignment({
+			const _reviewerMock = api.expectReviewerAssignment({
 				count: 2, // Should select 2 more (1 from each group)
 				shouldExclude: ["alice", "bob", "diana"], // Exclude author and existing reviewers
 				validCandidates: ["charlie", "eve", "frank"], // Available from both teams
@@ -668,12 +671,12 @@ describe("Reviewer Lottery System", () => {
 			};
 
 			const api = givenGitHubAPI();
-			const pullMock = api.setupPullRequest(scenario.pull);
-			const existingReviewersMock = api.setupExistingReviewers([
+			const _pullMock = api.setupPullRequest(scenario.pull);
+			const _existingReviewersMock = api.setupExistingReviewers([
 				"alice",
 				"diana",
 			]); // 1 from backend, 1 from frontend
-			const reviewerMock = api.expectReviewerAssignment({
+			const _reviewerMock = api.expectReviewerAssignment({
 				count: 1, // Should select 1 more from backend (2 required - 1 existing = 1)
 				shouldExclude: ["external-contributor", "alice", "diana"], // Exclude author and existing reviewers
 				validCandidates: ["bob", "charlie", "eve"], // Available from both teams
@@ -727,12 +730,12 @@ describe("Reviewer Lottery System", () => {
 			};
 
 			const api = givenGitHubAPI();
-			const pullMock = api.setupPullRequest(scenario.pull);
-			const existingReviewersMock = api.setupExistingReviewers([
+			const _pullMock = api.setupPullRequest(scenario.pull);
+			const _existingReviewersMock = api.setupExistingReviewers([
 				"diana",
 				"george",
 			]); // 1 from frontend, 1 from ops (requirements already met)
-			
+
 			// Expect no new reviewer assignment since default rule requirements are met
 			// No expectReviewerAssignment call since no reviewers should be selected
 
@@ -778,12 +781,12 @@ describe("Reviewer Lottery System", () => {
 			};
 
 			const api = givenGitHubAPI();
-			const pullMock = api.setupPullRequest(scenario.pull);
-			const existingReviewersMock = api.setupExistingReviewers([
+			const _pullMock = api.setupPullRequest(scenario.pull);
+			const _existingReviewersMock = api.setupExistingReviewers([
 				"diana", // 1 from frontend
 				"frank", // 1 from ops
 			]); // 2 existing, need 2 more
-			const reviewerMock = api.expectReviewerAssignment({
+			const _reviewerMock = api.expectReviewerAssignment({
 				count: 2, // Should select 2 more (4 required - 2 existing = 2)
 				shouldExclude: ["alice", "diana", "frank"], // Exclude author and existing reviewers
 				validCandidates: ["bob", "charlie", "eve", "george"], // Available from all teams
@@ -832,12 +835,12 @@ describe("Reviewer Lottery System", () => {
 			};
 
 			const api = givenGitHubAPI();
-			const pullMock = api.setupPullRequest(scenario.pull);
-			const existingReviewersMock = api.setupExistingReviewers([
+			const _pullMock = api.setupPullRequest(scenario.pull);
+			const _existingReviewersMock = api.setupExistingReviewers([
 				"bob", // 1 from backend (requirement met)
 				"diana", // 1 from frontend (1 more needed from non-backend)
 			]);
-			const reviewerMock = api.expectReviewerAssignment({
+			const _reviewerMock = api.expectReviewerAssignment({
 				count: 1, // Should select 1 more from non-backend groups
 				shouldExclude: ["alice", "bob", "diana"], // Exclude author and existing reviewers
 				validCandidates: ["charlie", "eve", "frank", "george"], // Available from all teams
@@ -882,12 +885,12 @@ describe("Reviewer Lottery System", () => {
 			};
 
 			const api = givenGitHubAPI();
-			const pullMock = api.setupPullRequest(scenario.pull);
-			const existingReviewersMock = api.setupExistingReviewers([
+			const _pullMock = api.setupPullRequest(scenario.pull);
+			const _existingReviewersMock = api.setupExistingReviewers([
 				"bob", // 1 from backend (need 1 more)
 				"external-user", // Not in any group (should be ignored in counting)
 			]);
-			const reviewerMock = api.expectReviewerAssignment({
+			const _reviewerMock = api.expectReviewerAssignment({
 				count: 2, // Should select 1 more from backend + 1 from frontend
 				shouldExclude: ["alice", "bob", "external-user"], // Exclude author and all existing reviewers
 				validCandidates: ["charlie", "diana", "eve"], // Available from both teams
@@ -927,13 +930,13 @@ describe("Reviewer Lottery System", () => {
 			};
 
 			const api = givenGitHubAPI();
-			const pullMock = api.setupPullRequest(scenario.pull);
-			const existingReviewersMock = api.setupExistingReviewers([
+			const _pullMock = api.setupPullRequest(scenario.pull);
+			const _existingReviewersMock = api.setupExistingReviewers([
 				"bob",
-				"charlie", 
+				"charlie",
 				"diana", // 3 existing reviewers (more than required 2)
 			]);
-			
+
 			// Expect no new reviewer assignment since requirement is already exceeded
 			// No expectReviewerAssignment call since no reviewers should be selected
 
@@ -971,15 +974,17 @@ describe("Reviewer Lottery System", () => {
 			};
 
 			const api = givenGitHubAPI();
-			const pullMock = api.setupPullRequest(scenario.pull);
-			
+			const _pullMock = api.setupPullRequest(scenario.pull);
+
 			// Mock API error for existing reviewers request
-			const existingReviewersErrorMock = nock("https://api.github.com")
-				.get(`/repos/${TEST_CONFIG.REPOSITORY}/pulls/${TEST_CONFIG.PR_NUMBER}/requested_reviewers`)
+			const _existingReviewersErrorMock = nock("https://api.github.com")
+				.get(
+					`/repos/${TEST_CONFIG.REPOSITORY}/pulls/${TEST_CONFIG.PR_NUMBER}/requested_reviewers`,
+				)
 				.reply(500, { message: "Internal Server Error" });
 
 			// Should still proceed with normal reviewer selection (treating as no existing reviewers)
-			const reviewerMock = api.expectReviewerAssignment({
+			const _reviewerMock = api.expectReviewerAssignment({
 				count: 2, // Should select 2 reviewers as if no existing reviewers
 				shouldExclude: ["alice"], // Only exclude author
 				validCandidates: ["bob", "charlie"], // Available from backend-team
@@ -1029,11 +1034,11 @@ describe("Reviewer Lottery System", () => {
 			};
 
 			const api = givenGitHubAPI();
-			const pullMock = api.setupPullRequest(scenario.pull);
-			const existingReviewersMock = api.setupExistingReviewers([
+			const _pullMock = api.setupPullRequest(scenario.pull);
+			const _existingReviewersMock = api.setupExistingReviewers([
 				"charlie", // 1 from ops (ops requirement met)
 			]);
-			const reviewerMock = api.expectReviewerAssignment({
+			const _reviewerMock = api.expectReviewerAssignment({
 				count: 1, // Should select 1 from backend (frontend impossible, ops already satisfied)
 				shouldExclude: ["alice", "charlie"], // Exclude author and existing reviewers
 				validCandidates: ["bob"], // Available from backend-team only
@@ -1066,8 +1071,8 @@ describe("Reviewer Lottery System", () => {
 			};
 
 			const api = givenGitHubAPI();
-			const pullMock = api.setupPullRequest(scenario.pull);
-			const existingReviewersMock = api.setupExistingReviewers();
+			const _pullMock = api.setupPullRequest(scenario.pull);
+			const _existingReviewersMock = api.setupExistingReviewers();
 
 			// Expect no reviewer assignment
 			// No expectReviewerAssignment call since no reviewers should be selected
@@ -1103,8 +1108,8 @@ describe("Reviewer Lottery System", () => {
 			};
 
 			const api = givenGitHubAPI();
-			const pullMock = api.setupPullRequest(scenario.pull);
-			const existingReviewersMock = api.setupExistingReviewers();
+			const _pullMock = api.setupPullRequest(scenario.pull);
+			const _existingReviewersMock = api.setupExistingReviewers();
 
 			// Expect no reviewer assignment
 			// No expectReviewerAssignment call since no reviewers should be selected
@@ -1139,7 +1144,10 @@ describe("Reviewer Lottery System", () => {
 			};
 
 			// Mock PR list with different ref
-			const pullWithDifferentRef = { ...scenario.pull, head: { ref: "different-ref" } };
+			const pullWithDifferentRef = {
+				...scenario.pull,
+				head: { ref: "different-ref" },
+			};
 			nock("https://api.github.com")
 				.get("/repos/company/reviewer-lottery-test/pulls")
 				.reply(200, [pullWithDifferentRef]);
@@ -1211,7 +1219,7 @@ describe("Reviewer Lottery System", () => {
 			const result = lottery.pickRandom(
 				["alice", "bob", "charlie"],
 				3,
-				[] // No one to ignore
+				[], // No one to ignore
 			);
 
 			// Then: all candidates are selected without duplicates
@@ -1244,9 +1252,9 @@ describe("Reviewer Lottery System", () => {
 			};
 
 			const api = givenGitHubAPI();
-			const pullMock = api.setupPullRequest(pull);
-			const existingReviewersMock = api.setupExistingReviewers();
-			const reviewerMock = api.expectReviewerAssignment({
+			const _pullMock = api.setupPullRequest(pull);
+			const _existingReviewersMock = api.setupExistingReviewers();
+			const _reviewerMock = api.expectReviewerAssignment({
 				count: 2,
 				validCandidates: ["alice", "bob"],
 			});
@@ -1289,9 +1297,9 @@ describe("Reviewer Lottery System", () => {
 			};
 
 			const api = givenGitHubAPI();
-			const pullMock = api.setupPullRequest(scenario.pull);
-			const existingReviewersMock = api.setupExistingReviewers();
-			const reviewerMock = api.expectReviewerAssignment({
+			const _pullMock = api.setupPullRequest(scenario.pull);
+			const _existingReviewersMock = api.setupExistingReviewers();
+			const _reviewerMock = api.expectReviewerAssignment({
 				count: 2, // Only from frontend-team
 				shouldExclude: ["alice"],
 				validCandidates: ["diana", "eve"],
@@ -1330,8 +1338,8 @@ describe("Reviewer Lottery System", () => {
 			};
 
 			const api = givenGitHubAPI();
-			const pullMock = api.setupPullRequest(scenario.pull);
-			const existingReviewersMock = api.setupExistingReviewers();
+			const _pullMock = api.setupPullRequest(scenario.pull);
+			const _existingReviewersMock = api.setupExistingReviewers();
 
 			// Expect no reviewer assignment
 			// No expectReviewerAssignment call since no reviewers should be selected
@@ -1375,7 +1383,7 @@ describe("Reviewer Lottery System", () => {
 				const result = lottery.pickRandom(
 					["alice", "bob", "charlie", "diana"],
 					1,
-					[]
+					[],
 				);
 				selectionCounts[result[0]]++;
 			}
@@ -1410,7 +1418,7 @@ describe("Reviewer Lottery System", () => {
 			const result = lottery.pickRandom(
 				["alice", "bob"],
 				5, // Want 5 but only 2 available
-				[]
+				[],
 			);
 
 			// Then: returns all available candidates
