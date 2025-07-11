@@ -11,6 +11,9 @@ inputs:
   config:
     description: 'Path to config file'
     default: '.github/reviewer-lottery.yml'
+  pr-author:
+    description: 'Pull request author username (optional, will be fetched from API if not provided)'
+    required: false
 runs:
   using: 'node20'
   main: 'dist/index.js'

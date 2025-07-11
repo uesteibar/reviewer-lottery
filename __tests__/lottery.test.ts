@@ -1,11 +1,22 @@
-import { Octokit } from "@octokit/rest";
+import { getOctokit } from "@actions/github";
 import nock from "nock";
 import { Lottery, type Pull, runLottery } from "../src/lottery";
 
-// Mock @actions/core to prevent error messages during tests
+// Mock @actions/core to prevent error messages during tests and test new functionality
 jest.mock("@actions/core", () => ({
 	error: jest.fn(),
 	setFailed: jest.fn(),
+	setOutput: jest.fn(),
+	info: jest.fn(),
+	debug: jest.fn(),
+	warning: jest.fn(),
+	startGroup: jest.fn(),
+	endGroup: jest.fn(),
+	summary: {
+		addHeading: jest.fn().mockReturnThis(),
+		addTable: jest.fn().mockReturnThis(),
+		write: jest.fn().mockResolvedValue(undefined),
+	},
 }));
 
 // Test constants
@@ -15,7 +26,7 @@ const TEST_CONFIG = {
 	REF: "refs/pull/feature-branch",
 } as const;
 
-const octokit = new Octokit();
+const octokit = getOctokit("test-token");
 
 // Scenario builders - focusing on user intent and business context
 interface TestScenario {
@@ -72,7 +83,7 @@ const givenGitHubAPI = () => {
 				} catch (_error) {
 					body = requestBody;
 				}
-				const { reviewers } = body;
+				const { reviewers } = body as { reviewers: string[] };
 
 				// Perform expectations as side effects
 				if (expectation.count !== undefined) {
@@ -116,28 +127,41 @@ const givenGitHubAPI = () => {
 	return { setupPullRequest, expectReviewerAssignment, setupExistingReviewers };
 };
 
-const whenLotteryRuns = async (config: {
-	groups: Array<{
-		name: string;
-		usernames: string[];
-	}>;
-	selection_rules?: {
-		default?: {
-			from: Record<string, number>;
-		};
-		by_author_group?: Array<{
-			group: string;
-			from: Record<string, number>;
+const whenLotteryRuns = async (
+	config: {
+		groups: Array<{
+			name: string;
+			usernames: string[];
 		}>;
-		non_group_members?: {
-			from: Record<string, number>;
+		selection_rules?: {
+			default?: {
+				from: Record<string, number>;
+			};
+			by_author_group?: Array<{
+				group: string;
+				from: Record<string, number>;
+			}>;
+			non_group_members?: {
+				from: Record<string, number>;
+			};
 		};
-	};
-}) => {
-	await runLottery(octokit, config, {
-		repository: TEST_CONFIG.REPOSITORY,
-		ref: TEST_CONFIG.REF,
-	});
+	},
+	prInfo?: {
+		prNumber: number;
+		repository: string;
+		ref: string;
+		author?: string;
+	},
+) => {
+	await runLottery(
+		octokit,
+		config,
+		prInfo || {
+			prNumber: TEST_CONFIG.PR_NUMBER,
+			repository: TEST_CONFIG.REPOSITORY,
+			ref: TEST_CONFIG.REF,
+		},
+	);
 };
 
 describe("Reviewer Lottery System", () => {
@@ -200,6 +224,78 @@ describe("Reviewer Lottery System", () => {
 
 			// Then: reviewers are assigned but Alice is excluded
 			// Expectations are performed within the mock
+		});
+
+		test("sets correct action outputs when reviewers are assigned", async () => {
+			// Given: a development team with multiple members
+			const scenario = createScenario({
+				author: "alice",
+				teams: [
+					{
+						name: "backend-team",
+						members: ["alice", "bob", "charlie", "diana"],
+					},
+				],
+			});
+
+			const configWithRules = {
+				...scenario.config,
+				selection_rules: {
+					by_author_group: [
+						{
+							group: "backend-team",
+							from: {
+								"backend-team": 2,
+							},
+						},
+					],
+				},
+			};
+
+			const api = givenGitHubAPI();
+			const _pullMock = api.setupPullRequest(scenario.pull);
+			const _existingReviewersMock = api.setupExistingReviewers(); // Empty existing reviewers
+			const _reviewerMock = api.expectReviewerAssignment({
+				count: 2,
+				shouldExclude: ["alice"], // Author should never be assigned as reviewer
+				validCandidates: ["bob", "charlie", "diana"], // Available from backend-team
+			});
+
+			// When: Alice opens a PR and the lottery runs
+			await whenLotteryRuns(configWithRules, {
+				prNumber: TEST_CONFIG.PR_NUMBER,
+				repository: TEST_CONFIG.REPOSITORY,
+				ref: TEST_CONFIG.REF,
+				author: "alice",
+			});
+
+			// Then: correct action outputs are set
+			const core = require("@actions/core");
+			expect(core.setOutput).toHaveBeenCalledWith("pr-author", "alice");
+			expect(core.setOutput).toHaveBeenCalledWith(
+				"author-group",
+				"backend-team",
+			);
+			expect(core.setOutput).toHaveBeenCalledWith("existing-reviewers", "");
+			expect(core.setOutput).toHaveBeenCalledWith("reviewer-count", "2");
+			expect(core.setOutput).toHaveBeenCalledWith(
+				"assignment-successful",
+				"true",
+			);
+
+			// Verify structured logging
+			expect(core.startGroup).toHaveBeenCalledWith(
+				"🎯 Reviewer Lottery - Starting",
+			);
+			expect(core.startGroup).toHaveBeenCalledWith("🎲 Selecting reviewers");
+			expect(core.startGroup).toHaveBeenCalledWith("📝 Assigning reviewers");
+			expect(core.endGroup).toHaveBeenCalledTimes(3);
+
+			// Verify summary is written
+			expect(core.summary.addHeading).toHaveBeenCalledWith(
+				"🎯 Reviewer Lottery Results",
+			);
+			expect(core.summary.write).toHaveBeenCalled();
 		});
 
 		test("distributes reviewers across multiple teams without duplication", async () => {

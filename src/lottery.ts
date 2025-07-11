@@ -1,6 +1,8 @@
 import * as core from "@actions/core";
-import type { Octokit } from "@octokit/rest";
+import type { getOctokit } from "@actions/github";
 import type { Config } from "./config";
+
+type Octokit = ReturnType<typeof getOctokit>;
 
 export interface Pull {
 	user: { login: string } | null;
@@ -17,15 +19,28 @@ export class Lottery {
 	config: Config;
 	env: Env;
 	pr: Pull | undefined | null;
+	prInfo?: {
+		prNumber: number;
+		repository: string;
+		ref: string;
+		author?: string;
+	};
 
 	constructor({
 		octokit,
 		config,
 		env,
+		prInfo,
 	}: {
 		octokit: Octokit;
 		config: Config;
 		env: Env;
+		prInfo?: {
+			prNumber: number;
+			repository: string;
+			ref: string;
+			author?: string;
+		};
 	}) {
 		this.octokit = octokit;
 		this.config = config;
@@ -34,19 +49,65 @@ export class Lottery {
 			ref: env.ref,
 		};
 		this.pr = undefined;
+		this.prInfo = prInfo;
 	}
 
 	async run(): Promise<void> {
+		core.startGroup("🎯 Reviewer Lottery - Starting");
+
 		try {
+			core.debug("Checking if PR is ready for review assignment");
 			const ready = await this.isReadyToReview();
+
 			if (ready) {
+				core.debug("PR is ready, selecting reviewers");
 				const reviewers = await this.selectReviewers();
-				reviewers.length > 0 && (await this.setReviewers(reviewers));
+
+				core.info(
+					`Selected ${reviewers.length} reviewers: ${reviewers.join(", ")}`,
+				);
+
+				// Set action outputs
+				core.setOutput("reviewers", reviewers.join(","));
+				core.setOutput("reviewer-count", reviewers.length.toString());
+
+				if (reviewers.length > 0) {
+					core.startGroup("📝 Assigning reviewers");
+					core.setOutput("assignment-successful", "true");
+
+					// Add to summary
+					await this.addSuccessSummary(reviewers);
+
+					try {
+						await this.setReviewers(reviewers);
+						core.info("✅ Successfully assigned reviewers to PR");
+					} finally {
+						core.endGroup();
+					}
+				} else {
+					core.setOutput("assignment-successful", "false");
+					core.info("⚠️ No reviewers selected");
+
+					// Add to summary
+					await this.addNoReviewersSummary();
+				}
+			} else {
+				core.setOutput("assignment-successful", "false");
+				core.setOutput("reviewers", "");
+				core.setOutput("reviewer-count", "0");
+				core.info("❌ PR is not ready for review assignment");
 			}
 		} catch (error: unknown) {
 			core.error(error instanceof Error ? error.message : String(error));
 			core.setFailed(error instanceof Error ? error.message : String(error));
+
+			// Set error outputs
+			core.setOutput("assignment-successful", "false");
+			core.setOutput("reviewers", "");
+			core.setOutput("reviewer-count", "0");
 		}
+
+		core.endGroup();
 	}
 
 	async isReadyToReview(): Promise<boolean> {
@@ -64,7 +125,7 @@ export class Lottery {
 		const ownerAndRepo = this.getOwnerAndRepo();
 		const pr = this.getPRNumber();
 
-		return this.octokit.pulls.requestReviewers({
+		return this.octokit.rest.pulls.requestReviewers({
 			...ownerAndRepo,
 			pull_number: pr,
 			reviewers: reviewers.filter((r: string | undefined) => !!r),
@@ -76,14 +137,14 @@ export class Lottery {
 		const pr = this.getPRNumber();
 
 		try {
-			const { data } = await this.octokit.pulls.listRequestedReviewers({
+			const { data } = await this.octokit.rest.pulls.listRequestedReviewers({
 				...ownerAndRepo,
 				pull_number: pr,
 			});
 
-			return data.users.map((user) => user.login);
+			return data.users.map((user: { login: string }) => user.login);
 		} catch (error: unknown) {
-			core.error(
+			core.warning(
 				`Failed to get existing reviewers: ${error instanceof Error ? error.message : String(error)}`,
 			);
 			return [];
@@ -91,18 +152,40 @@ export class Lottery {
 	}
 
 	async selectReviewers(): Promise<string[]> {
+		core.startGroup("🎲 Selecting reviewers");
+
 		const author = await this.getPRAuthor();
 		const existingReviewers = await this.getExistingReviewers();
 
+		core.info(`PR author: ${author}`);
+		core.info(
+			`Existing reviewers: ${existingReviewers.length > 0 ? existingReviewers.join(", ") : "none"}`,
+		);
+
 		try {
 			if (this.config.selection_rules) {
-				return this.selectReviewersWithRules(author, existingReviewers);
+				const authorGroup = this.getAuthorGroup(author);
+				core.info(`Author group: ${authorGroup || "none"}`);
+
+				const result = this.selectReviewersWithRules(author, existingReviewers);
+
+				// Set output for applied rule info
+				core.setOutput("pr-author", author);
+				core.setOutput("author-group", authorGroup || "none");
+				core.setOutput("existing-reviewers", existingReviewers.join(","));
+
+				core.debug(`Selection result: ${result.join(", ")}`);
+				core.endGroup();
+				return result;
 			}
 
+			core.info("No selection rules configured");
+			core.endGroup();
 			return [];
 		} catch (error: unknown) {
 			core.error(error instanceof Error ? error.message : String(error));
 			core.setFailed(error instanceof Error ? error.message : String(error));
+			core.endGroup();
 			return [];
 		}
 	}
@@ -215,6 +298,56 @@ export class Lottery {
 		return candidates;
 	}
 
+	private async addSuccessSummary(reviewers: string[]): Promise<void> {
+		const author = await this.getPRAuthor();
+		const authorGroup = this.getAuthorGroup(author);
+		const existingReviewers = await this.getExistingReviewers();
+
+		await core.summary
+			.addHeading("🎯 Reviewer Lottery Results")
+			.addTable([
+				[
+					{ data: "Field", header: true },
+					{ data: "Value", header: true },
+				],
+				["PR Author", author],
+				["Author Group", authorGroup || "none"],
+				[
+					"Existing Reviewers",
+					existingReviewers.length > 0 ? existingReviewers.join(", ") : "none",
+				],
+				["Selected Reviewers", reviewers.join(", ")],
+				["Total Reviewers", reviewers.length.toString()],
+				["Status", "✅ Successfully assigned"],
+			])
+			.write();
+	}
+
+	private async addNoReviewersSummary(): Promise<void> {
+		const author = await this.getPRAuthor();
+		const authorGroup = this.getAuthorGroup(author);
+		const existingReviewers = await this.getExistingReviewers();
+
+		await core.summary
+			.addHeading("🎯 Reviewer Lottery Results")
+			.addTable([
+				[
+					{ data: "Field", header: true },
+					{ data: "Value", header: true },
+				],
+				["PR Author", author],
+				["Author Group", authorGroup || "none"],
+				[
+					"Existing Reviewers",
+					existingReviewers.length > 0 ? existingReviewers.join(", ") : "none",
+				],
+				["Selected Reviewers", "none"],
+				["Total Reviewers", "0"],
+				["Status", "⚠️ No reviewers selected"],
+			])
+			.write();
+	}
+
 	pickRandom(items: string[], n: number, ignore: string[]): string[] {
 		const picks: string[] = [];
 
@@ -232,7 +365,28 @@ export class Lottery {
 
 	async getPRAuthor(): Promise<string> {
 		try {
+			// If we have PR author from environment, use it directly
+			if (this.prInfo?.author) {
+				return this.prInfo.author;
+			}
+
 			const pr = await this.getPR();
+
+			// If we have PR info but no author cached, get it from API
+			if (this.prInfo && (!pr?.user || !pr.user.login)) {
+				const { data } = await this.octokit.rest.pulls.get({
+					...this.getOwnerAndRepo(),
+					pull_number: this.prInfo.prNumber,
+				});
+
+				// Cache the full PR info with author
+				this.pr = {
+					number: data.number,
+					user: data.user,
+				};
+
+				return data.user?.login ?? "";
+			}
 
 			return pr?.user?.login ?? "";
 		} catch (error: unknown) {
@@ -265,12 +419,24 @@ export class Lottery {
 	async getPR(): Promise<Pull | undefined> {
 		if (this.pr) return this.pr;
 
+		// If we have PR info from environment variables, use it directly
+		if (this.prInfo) {
+			this.pr = {
+				number: this.prInfo.prNumber,
+				user: null, // We'll get the author from API only when needed
+			};
+			return this.pr;
+		}
+
+		// Fallback to API call if no direct PR info available
 		try {
-			const { data } = await this.octokit.pulls.list({
+			const { data } = await this.octokit.rest.pulls.list({
 				...this.getOwnerAndRepo(),
 			});
 
-			this.pr = data.find(({ head: { ref } }) => ref === this.env.ref);
+			this.pr = data.find(
+				({ head: { ref } }: { head: { ref: string } }) => ref === this.env.ref,
+			);
 
 			if (!this.pr) {
 				throw new Error(`PR matching ref not found: ${this.env.ref}`);
@@ -289,12 +455,18 @@ export class Lottery {
 export const runLottery = async (
 	octokit: Octokit,
 	config: Config,
+	prInfo?: {
+		prNumber: number;
+		repository: string;
+		ref: string;
+		author?: string;
+	},
 	env = {
 		repository: process.env.GITHUB_REPOSITORY || "",
 		ref: process.env.GITHUB_HEAD_REF || "",
 	},
 ): Promise<void> => {
-	const lottery = new Lottery({ octokit, config, env });
+	const lottery = new Lottery({ octokit, config, env, prInfo });
 
 	await lottery.run();
 };
