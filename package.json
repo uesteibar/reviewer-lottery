@@ -10,7 +10,7 @@
 		"format-check": "biome format",
 		"lint": "biome check",
 		"lint-fix": "biome check --write",
-		"pack": "ncc build",
+		"pack": "tsup",
 		"test": "jest",
 		"all": "pnpm run build && pnpm run format && pnpm run lint && pnpm run pack && pnpm test"
 	},
@@ -35,11 +35,11 @@
 		"@types/js-yaml": "^4.0.5",
 		"@types/nock": "^11.1.0",
 		"@types/node": "^20.0.0",
-		"@vercel/ncc": "^0.36.1",
 		"jest": "^29.5.0",
 		"js-yaml": "^4.1.0",
 		"nock": "^13.3.1",
 		"ts-jest": "^29.1.0",
+		"tsup": "^8.5.0",
 		"typescript": "^5.0.4"
 	}
 }
