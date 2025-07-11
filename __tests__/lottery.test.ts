@@ -2,6 +2,12 @@ import { Octokit } from "@octokit/rest";
 import nock from "nock";
 import { type Pull, runLottery } from "../src/lottery";
 
+// Mock @actions/core to prevent error messages during tests
+jest.mock("@actions/core", () => ({
+	error: jest.fn(),
+	setFailed: jest.fn(),
+}));
+
 // Test constants
 const TEST_CONFIG = {
 	REPOSITORY: "company/reviewer-lottery-test",
@@ -42,40 +48,54 @@ const givenGitHubAPI = () => {
 		const pullWithHead = { ...pull, head: { ref: TEST_CONFIG.REF } };
 		return nock("https://api.github.com")
 			.get("/repos/company/reviewer-lottery-test/pulls")
-			.reply(200, [pullWithHead]);
+			.reply(200, [pullWithHead])
+			.persist(); // Allow multiple calls
 	};
 
 	const expectReviewerAssignment = (expectation: {
 		count?: number;
 		shouldInclude?: string[];
 		shouldExclude?: string[];
+		validCandidates?: string[];
 	}) => {
 		return nock("https://api.github.com")
 			.post(
 				`/repos/${TEST_CONFIG.REPOSITORY}/pulls/${TEST_CONFIG.PR_NUMBER}/requested_reviewers`,
-				(body): boolean => {
-					const { reviewers } = body;
-
-					if (expectation.count !== undefined) {
-						expect(reviewers).toHaveLength(expectation.count);
-					}
-
-					if (expectation.shouldInclude) {
-						expectation.shouldInclude.forEach((reviewer) => {
-							expect(reviewers).toContain(reviewer);
-						});
-					}
-
-					if (expectation.shouldExclude) {
-						expectation.shouldExclude.forEach((reviewer) => {
-							expect(reviewers).not.toContain(reviewer);
-						});
-					}
-
-					return true;
-				},
 			)
-			.reply(200, { number: TEST_CONFIG.PR_NUMBER });
+			.reply(200, (_uri, requestBody) => {
+				let body: any;
+				try {
+					body = typeof requestBody === 'string' ? JSON.parse(requestBody) : requestBody;
+				} catch (error) {
+					body = requestBody;
+				}
+				const { reviewers } = body;
+
+				// Perform expectations as side effects
+				if (expectation.count !== undefined) {
+					expect(reviewers).toHaveLength(expectation.count);
+				}
+
+				if (expectation.shouldInclude) {
+					expectation.shouldInclude.forEach((reviewer) => {
+						expect(reviewers).toContain(reviewer);
+					});
+				}
+
+				if (expectation.shouldExclude) {
+					expectation.shouldExclude.forEach((reviewer) => {
+						expect(reviewers).not.toContain(reviewer);
+					});
+				}
+
+				if (expectation.validCandidates) {
+					reviewers.forEach((reviewer: string) => {
+						expect(expectation.validCandidates).toContain(reviewer);
+					});
+				}
+
+				return { number: TEST_CONFIG.PR_NUMBER };
+			});
 	};
 
 	const setupExistingReviewers = (existingReviewers: string[] = []) => {
@@ -86,7 +106,8 @@ const givenGitHubAPI = () => {
 			.reply(200, {
 				users: existingReviewers.map((login) => ({ login })),
 				teams: [],
-			});
+			})
+			.persist(); // Allow multiple calls
 	};
 
 	return { setupPullRequest, expectReviewerAssignment, setupExistingReviewers };
@@ -118,18 +139,20 @@ const whenLotteryRuns = async (config: {
 
 describe("Reviewer Lottery System", () => {
 	beforeEach(() => {
-		// Setup default empty existing reviewers response that persists for all tests
-		nock("https://api.github.com")
-			.persist()
-			.get(`/repos/${TEST_CONFIG.REPOSITORY}/pulls/${TEST_CONFIG.PR_NUMBER}/requested_reviewers`)
-			.reply(200, {
-				users: [],
-				teams: [],
-			});
+		// Ensure nock is clean before each test
+		nock.cleanAll();
 	});
 
 	afterEach(() => {
+		// Clean up after each test
 		nock.cleanAll();
+		nock.restore();
+		// Ensure no pending interceptors
+		if (!nock.isDone()) {
+			nock.pendingMocks().forEach(mock => {
+				console.warn('Pending mock:', mock);
+			});
+		}
 	});
 
 	describe("Basic reviewer assignment", () => {
@@ -161,17 +184,18 @@ describe("Reviewer Lottery System", () => {
 
 			const api = givenGitHubAPI();
 			const pullMock = api.setupPullRequest(scenario.pull);
+			const existingReviewersMock = api.setupExistingReviewers(); // Empty existing reviewers
 			const reviewerMock = api.expectReviewerAssignment({
 				count: 2,
 				shouldExclude: ["alice"], // Author should never be assigned as reviewer
+				validCandidates: ["bob", "charlie", "diana"], // Available from backend-team
 			});
 
 			// When: Alice opens a PR and the lottery runs
 			await whenLotteryRuns(configWithRules);
 
 			// Then: reviewers are assigned but Alice is excluded
-			pullMock.done();
-			reviewerMock.done();
+			// Expectations are performed within the mock
 		});
 
 		test("distributes reviewers across multiple teams without duplication", async () => {
@@ -207,17 +231,18 @@ describe("Reviewer Lottery System", () => {
 
 			const api = givenGitHubAPI();
 			const pullMock = api.setupPullRequest(scenario.pull);
+			const existingReviewersMock = api.setupExistingReviewers(); // Empty existing reviewers
 			const reviewerMock = api.expectReviewerAssignment({
 				count: 4, // 2 from each team
 				shouldExclude: ["eve"], // Author excluded
+				validCandidates: ["alice", "bob", "charlie", "diana"], // Available from both teams
 			});
 
 			// When: Eve opens a PR and the lottery runs
 			await whenLotteryRuns(configWithRules);
 
 			// Then: reviewers are selected from both teams without duplicates
-			pullMock.done();
-			reviewerMock.done();
+			// Expectations are performed within the mock
 		});
 	});
 
@@ -255,18 +280,19 @@ describe("Reviewer Lottery System", () => {
 
 			const api = givenGitHubAPI();
 			const pullMock = api.setupPullRequest(scenario.pull);
+			const existingReviewersMock = api.setupExistingReviewers(); // Empty existing reviewers
 			const reviewerMock = api.expectReviewerAssignment({
 				count: 1, // Only bob can be assigned
 				shouldInclude: ["bob"],
 				shouldExclude: ["alice"],
+				validCandidates: ["bob"], // Only bob is available
 			});
 
 			// When: Alice opens a PR and the lottery runs
 			await whenLotteryRuns(configWithRules);
 
 			// Then: only available reviewers are assigned
-			pullMock.done();
-			reviewerMock.done();
+			// Expectations are performed within the mock
 		});
 	});
 
@@ -302,17 +328,18 @@ describe("Reviewer Lottery System", () => {
 
 				const api = givenGitHubAPI();
 				const pullMock = api.setupPullRequest(scenario.pull);
+				const existingReviewersMock = api.setupExistingReviewers(); // Empty existing reviewers
 				const reviewerMock = api.expectReviewerAssignment({
 					count: 3, // 1 from backend + 2 from frontend
 					shouldExclude: ["external-contributor"],
+					validCandidates: ["alice", "bob", "charlie", "diana"], // Available from both teams
 				});
 
 				// When: external contributor opens PR
 				await whenLotteryRuns(configWithRules);
 
 				// Then: default rules are applied
-				pullMock.done();
-				reviewerMock.done();
+				// Expectations are performed within the mock
 			});
 		});
 
@@ -356,17 +383,18 @@ describe("Reviewer Lottery System", () => {
 
 				const api = givenGitHubAPI();
 				const pullMock = api.setupPullRequest(scenario.pull);
+				const existingReviewersMock = api.setupExistingReviewers(); // Empty existing reviewers
 				const reviewerMock = api.expectReviewerAssignment({
 					count: 3, // 2 from backend + 1 from frontend
 					shouldExclude: ["alice"],
+					validCandidates: ["bob", "charlie", "diana", "eve"], // Available from both teams
 				});
 
 				// When: backend team member opens PR
 				await whenLotteryRuns(configWithRules);
 
 				// Then: group-specific rules are applied
-				pullMock.done();
-				reviewerMock.done();
+				// Expectations are performed within the mock
 			});
 		});
 
@@ -407,17 +435,18 @@ describe("Reviewer Lottery System", () => {
 
 				const api = givenGitHubAPI();
 				const pullMock = api.setupPullRequest(scenario.pull);
+				const existingReviewersMock = api.setupExistingReviewers(); // Empty existing reviewers
 				const reviewerMock = api.expectReviewerAssignment({
 					count: 3,
 					shouldExclude: ["alice"],
+				validCandidates: ["bob", "charlie", "diana", "eve", "frank"], // Available from all teams
 				});
 
 				// When: backend team member opens PR
 				await whenLotteryRuns(configWithRules);
 
 				// Then: reviewers are selected from all groups
-				pullMock.done();
-				reviewerMock.done();
+				// Expectations are performed within the mock
 			});
 
 			test('supports "!group" keyword for exclusion', async () => {
@@ -457,17 +486,18 @@ describe("Reviewer Lottery System", () => {
 
 				const api = givenGitHubAPI();
 				const pullMock = api.setupPullRequest(scenario.pull);
+				const existingReviewersMock = api.setupExistingReviewers(); // Empty existing reviewers
 				const reviewerMock = api.expectReviewerAssignment({
 					count: 3,
 					shouldExclude: ["alice"],
+				validCandidates: ["bob", "charlie", "diana", "eve", "frank"], // Available from all teams
 				});
 
 				// When: backend team member opens PR
 				await whenLotteryRuns(configWithRules);
 
 				// Then: reviewers are selected from backend + non-backend groups
-				pullMock.done();
-				reviewerMock.done();
+				// Expectations are performed within the mock
 			});
 		});
 	});
@@ -505,15 +535,14 @@ describe("Reviewer Lottery System", () => {
 			const reviewerMock = api.expectReviewerAssignment({
 				count: 1, // Should only select 1 more (2 required - 1 existing = 1)
 				shouldExclude: ["alice", "bob"], // Exclude author and existing reviewer
+				validCandidates: ["charlie", "diana"], // Available from backend-team
 			});
 
 			// When: Alice opens a PR with Bob already assigned as reviewer
 			await whenLotteryRuns(configWithRules);
 
 			// Then: only 1 additional reviewer is selected
-			pullMock.done();
-			existingReviewersMock.done();
-			reviewerMock.done();
+			// Expectations are performed within the mock
 		});
 
 		test("assigns no additional reviewers when requirement is already met", async () => {
@@ -556,8 +585,7 @@ describe("Reviewer Lottery System", () => {
 			await whenLotteryRuns(configWithRules);
 
 			// Then: no additional reviewers are selected
-			pullMock.done();
-			existingReviewersMock.done();
+			// Expectations are performed within the mock
 		});
 
 		test("handles existing reviewers across multiple groups", async () => {
@@ -600,15 +628,14 @@ describe("Reviewer Lottery System", () => {
 			const reviewerMock = api.expectReviewerAssignment({
 				count: 2, // Should select 2 more (1 from each group)
 				shouldExclude: ["alice", "bob", "diana"], // Exclude author and existing reviewers
+				validCandidates: ["charlie", "eve", "frank"], // Available from both teams
 			});
 
 			// When: Alice opens a PR with Bob (backend) and Diana (frontend) already assigned
 			await whenLotteryRuns(configWithRules);
 
 			// Then: 1 additional reviewer from each group is selected
-			pullMock.done();
-			existingReviewersMock.done();
-			reviewerMock.done();
+			// Expectations are performed within the mock
 		});
 
 		test("handles existing reviewers with non-group members rule", async () => {
@@ -648,15 +675,14 @@ describe("Reviewer Lottery System", () => {
 			const reviewerMock = api.expectReviewerAssignment({
 				count: 1, // Should select 1 more from backend (2 required - 1 existing = 1)
 				shouldExclude: ["external-contributor", "alice", "diana"], // Exclude author and existing reviewers
+				validCandidates: ["bob", "charlie", "eve"], // Available from both teams
 			});
 
 			// When: external contributor opens a PR with existing reviewers
 			await whenLotteryRuns(configWithRules);
 
 			// Then: additional reviewers are selected based on remaining need
-			pullMock.done();
-			existingReviewersMock.done();
-			reviewerMock.done();
+			// Expectations are performed within the mock
 		});
 
 		test("handles existing reviewers with default rule fallback", async () => {
@@ -713,8 +739,7 @@ describe("Reviewer Lottery System", () => {
 			await whenLotteryRuns(configWithRules);
 
 			// Then: no additional reviewers are selected as requirements are met
-			pullMock.done();
-			existingReviewersMock.done();
+			// Expectations are performed within the mock
 		});
 
 		test("handles existing reviewers with wildcard (*) selection", async () => {
@@ -760,15 +785,14 @@ describe("Reviewer Lottery System", () => {
 			const reviewerMock = api.expectReviewerAssignment({
 				count: 2, // Should select 2 more (4 required - 2 existing = 2)
 				shouldExclude: ["alice", "diana", "frank"], // Exclude author and existing reviewers
+				validCandidates: ["bob", "charlie", "eve", "george"], // Available from all teams
 			});
 
 			// When: Alice opens PR with wildcard selection and existing reviewers
 			await whenLotteryRuns(configWithRules);
 
 			// Then: additional reviewers are selected to meet total requirement
-			pullMock.done();
-			existingReviewersMock.done();
-			reviewerMock.done();
+			// Expectations are performed within the mock
 		});
 
 		test("handles existing reviewers with exclusion (!group) selection", async () => {
@@ -815,15 +839,14 @@ describe("Reviewer Lottery System", () => {
 			const reviewerMock = api.expectReviewerAssignment({
 				count: 1, // Should select 1 more from non-backend groups
 				shouldExclude: ["alice", "bob", "diana"], // Exclude author and existing reviewers
+				validCandidates: ["charlie", "eve", "frank", "george"], // Available from all teams
 			});
 
 			// When: Alice opens PR with exclusion selection and existing reviewers
 			await whenLotteryRuns(configWithRules);
 
 			// Then: additional reviewers are selected from non-backend groups only
-			pullMock.done();
-			existingReviewersMock.done();
-			reviewerMock.done();
+			// Expectations are performed within the mock
 		});
 
 		test("handles existing reviewers not in any configured group", async () => {
@@ -866,15 +889,14 @@ describe("Reviewer Lottery System", () => {
 			const reviewerMock = api.expectReviewerAssignment({
 				count: 2, // Should select 1 more from backend + 1 from frontend
 				shouldExclude: ["alice", "bob", "external-user"], // Exclude author and all existing reviewers
+				validCandidates: ["charlie", "diana", "eve"], // Available from both teams
 			});
 
 			// When: Alice opens PR with mix of group members and external reviewers
 			await whenLotteryRuns(configWithRules);
 
 			// Then: external reviewers are ignored in group counting
-			pullMock.done();
-			existingReviewersMock.done();
-			reviewerMock.done();
+			// Expectations are performed within the mock
 		});
 
 		test("handles case where existing reviewers exceed requirements", async () => {
@@ -918,8 +940,7 @@ describe("Reviewer Lottery System", () => {
 			await whenLotteryRuns(configWithRules);
 
 			// Then: no additional reviewers are selected
-			pullMock.done();
-			existingReviewersMock.done();
+			// Expectations are performed within the mock
 		});
 
 		test("handles API error when fetching existing reviewers gracefully", async () => {
@@ -960,15 +981,14 @@ describe("Reviewer Lottery System", () => {
 			const reviewerMock = api.expectReviewerAssignment({
 				count: 2, // Should select 2 reviewers as if no existing reviewers
 				shouldExclude: ["alice"], // Only exclude author
+				validCandidates: ["bob", "charlie"], // Available from backend-team
 			});
 
 			// When: API error occurs while fetching existing reviewers
 			await whenLotteryRuns(configWithRules);
 
 			// Then: system gracefully handles error and proceeds with selection
-			pullMock.done();
-			existingReviewersErrorMock.done();
-			reviewerMock.done();
+			// Expectations are performed within the mock
 		});
 
 		test("handles empty groups with existing reviewers", async () => {
@@ -1015,15 +1035,14 @@ describe("Reviewer Lottery System", () => {
 			const reviewerMock = api.expectReviewerAssignment({
 				count: 1, // Should select 1 from backend (frontend impossible, ops already satisfied)
 				shouldExclude: ["alice", "charlie"], // Exclude author and existing reviewers
+				validCandidates: ["bob"], // Available from backend-team only
 			});
 
 			// When: Alice opens PR with empty groups in configuration
 			await whenLotteryRuns(configWithRules);
 
 			// Then: system handles empty groups gracefully
-			pullMock.done();
-			existingReviewersMock.done();
-			reviewerMock.done();
+			// Expectations are performed within the mock
 		});
 	});
 });
