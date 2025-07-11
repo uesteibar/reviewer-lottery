@@ -1,8 +1,8 @@
 {
-	"name": "typescript-action",
+	"name": "reviewer-lottery",
 	"version": "0.0.0",
 	"private": true,
-	"description": "TypeScript template action",
+	"description": "Automatically assign reviewers to Pull Requests",
 	"main": "lib/main.js",
 	"scripts": {
 		"build": "tsc",
@@ -16,14 +16,14 @@
 	},
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/actions/typescript-action.git"
+		"url": "git+https://github.com/fan-k-tamura/reviewer-lottery.git"
 	},
 	"keywords": [
 		"actions",
 		"node",
 		"setup"
 	],
-	"author": "YourNameOrOrganization",
+	"author": "fan-k-tamura",
 	"license": "MIT",
 	"dependencies": {
 		"@actions/core": "^1.9.1",

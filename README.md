@@ -2,9 +2,106 @@
 
 This is a github action to add automatic reviewer lottery to your pull requests.
 
-Add your configuration on `.github/reviewer-lottery.yml`
+## Quick Start
 
-## Configuration
+1. Create `.github/reviewer-lottery.yml` with a simple configuration:
+
+```yaml
+groups:
+  - name: team
+    usernames:
+      - alice
+      - bob
+      - charlie
+      - diana
+
+selection_rules:
+  default:
+    from:
+      team: 2  # Always assign 2 reviewers from the team
+```
+
+2. Add the workflow `.github/workflows/reviewer-lottery.yml`:
+
+```yaml
+name: "Reviewer lottery"
+on:
+  pull_request_target:
+    types: [opened, ready_for_review, reopened]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v1
+    - uses: fan-k-tamura/reviewer-lottery@v4
+      with:
+        repo-token: ${{ secrets.GITHUB_TOKEN }}
+```
+
+## How It Works
+
+### Basic Behavior
+- **New PR**: Assigns reviewers according to your selection rules
+- **Existing reviewers**: Respects already assigned reviewers and only adds additional ones if needed
+- **Author exclusion**: Never assigns the PR author as a reviewer
+- **Group member exclusion**: Excludes users already selected in the same lottery run
+
+### Examples
+
+#### Scenario 1: No existing reviewers
+```yaml
+# Your config requests 2 backend reviewers
+selection_rules:
+  default:
+    from:
+      backend: 2
+```
+**Result**: Assigns 2 random reviewers from the backend team
+
+#### Scenario 2: Some reviewers already assigned
+```yaml
+# Your config requests 2 backend reviewers
+# But alice from backend is already assigned
+selection_rules:
+  default:
+    from:
+      backend: 2
+```
+**Result**: Assigns 1 additional reviewer from backend (total = 2)
+
+#### Scenario 3: Configuration error
+```yaml
+# Typo in group name
+selection_rules:
+  default:
+    from:
+      backend: 2  # Should be 'backend'
+```
+**Result**: Action fails with clear error message about unknown group
+
+## FAQ
+
+**Why would I want to assign random reviewers?**
+
+Code reviews are not only a great tool to improve code quality, but also to spread
+shared code ownership and share knowledge. When developers are frequently reviewing
+changes in the codebase, it's easier to stay up to date with the latest conventions,
+patterns and decisions.
+
+Plus, you always learn something new seeing how other people solve problems!
+
+
+**Why adding users in the config file directly and not using a github team?**
+
+This way, you can add and remove yourself from the lottery easily in case you go on vacation,
+are not working on this repo for some time, etc.
+
+Reviewing code is good and fun, but we want to be able to disconnect from time to time! :palm_tree: :sunny:
+
+## Configuration Examples
+
+### Advanced Configuration
 
 The configuration uses `selection_rules` to provide maximum flexibility for reviewer assignment:
 
@@ -43,11 +140,11 @@ selection_rules:
       from:
         backend: 2    # 2 reviewers from same team
         frontend: 1   # 1 reviewer from frontend team
-    
+
     - group: frontend
       from:
         "*": 2        # 2 reviewers from any group
-    
+
     - group: ops
       from:
         ops: 2        # 2 reviewers from ops team
@@ -88,8 +185,9 @@ When assigning reviewers, the following priority is used:
     "!ops": 2       # 2 from any other team
 ```
 
+### Excluding Bot PRs
 
-The ideal workflow configuration is:
+You can exclude PRs created by bots (like Dependabot, Renovate, etc.) by adding conditions to your GitHub Actions workflow:
 
 ```yaml
 name: "Reviewer lottery"
@@ -100,39 +198,18 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # Skip if PR is created by bots
+    if: |
+      github.event.pull_request.user.login != 'dependabot[bot]' &&
+      github.event.pull_request.user.login != 'renovate[bot]' &&
+      github.event.pull_request.user.login != 'github-actions[bot]' &&
+      !contains(github.event.pull_request.user.login, '[bot]')
+
     steps:
     - uses: actions/checkout@v1
-    - uses: uesteibar/reviewer-lottery@v3
+    - uses: fan-k-tamura/reviewer-lottery@v4
       with:
         repo-token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-
-When opening a PR, this github action will assign random reviewers:
-
-![](./img/assignation_example.png)
-
-
-## FAQ
-
-**Why would I want to assign random reviewers?**
-
-Code reviews are not only a great tool to improve code quality, but also to spread
-shared code ownership and share knowledge. When developers are frequently reviewing
-changes in the codebase, it's easier to stay up to date with the latest conventions,
-patterns and decisions.
-
-Plus, you always learn something new seeing how other people solve problems!
-
-
-**Why adding users in the config file directly and not using a github team?**
-
-This way, you can add and remove yourself from the lottery easily in case you go on vacation,
-are not working on this repo for some time, etc.
-
-Reviewing code is good and fun, but we want to be able to disconnect from time to time! :palm_tree: :sunny:
-
-**Why on pull_request_target?**
-
-By running this action on `pull_request_target` we enable this action to be performed on PRs opened by users with 
-readonly access to the repo, for example those by Dependabot.
+This approach allows you to control which PRs trigger the reviewer lottery without modifying the lottery configuration itself.
