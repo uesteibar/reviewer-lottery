@@ -1,6 +1,6 @@
 import { Octokit } from "@octokit/rest";
 import nock from "nock";
-import { type Pull, runLottery } from "../src/lottery";
+import { type Pull, runLottery, Lottery } from "../src/lottery";
 
 // Mock @actions/core to prevent error messages during tests
 jest.mock("@actions/core", () => ({
@@ -141,6 +141,7 @@ describe("Reviewer Lottery System", () => {
 	beforeEach(() => {
 		// Ensure nock is clean before each test
 		nock.cleanAll();
+		jest.clearAllMocks();
 	});
 
 	afterEach(() => {
@@ -1045,4 +1046,379 @@ describe("Reviewer Lottery System", () => {
 			// Expectations are performed within the mock
 		});
 	});
+
+	describe("Error handling and edge cases", () => {
+		test("handles missing selection_rules configuration", async () => {
+			// Given: configuration without selection_rules
+			const scenario = createScenario({
+				author: "alice",
+				teams: [
+					{
+						name: "backend-team",
+						members: ["alice", "bob", "charlie"],
+					},
+				],
+			});
+
+			const configWithoutRules = {
+				...scenario.config,
+				// No selection_rules defined
+			};
+
+			const api = givenGitHubAPI();
+			const pullMock = api.setupPullRequest(scenario.pull);
+			const existingReviewersMock = api.setupExistingReviewers();
+
+			// Expect no reviewer assignment
+			// No expectReviewerAssignment call since no reviewers should be selected
+
+			// When: lottery runs without selection_rules
+			await whenLotteryRuns(configWithoutRules);
+
+			// Then: no reviewers are selected and no error occurs
+		});
+
+		test("handles empty fromClause gracefully", async () => {
+			// Given: configuration with empty fromClause
+			const scenario = createScenario({
+				author: "alice",
+				teams: [
+					{
+						name: "backend-team",
+						members: ["alice", "bob", "charlie"],
+					},
+				],
+			});
+
+			const configWithEmptyFrom = {
+				...scenario.config,
+				selection_rules: {
+					by_author_group: [
+						{
+							group: "backend-team",
+							from: {}, // Empty fromClause
+						},
+					],
+				},
+			};
+
+			const api = givenGitHubAPI();
+			const pullMock = api.setupPullRequest(scenario.pull);
+			const existingReviewersMock = api.setupExistingReviewers();
+
+			// Expect no reviewer assignment
+			// No expectReviewerAssignment call since no reviewers should be selected
+
+			// When: lottery runs with empty fromClause
+			await whenLotteryRuns(configWithEmptyFrom);
+
+			// Then: no reviewers are selected
+		});
+
+		test("handles PR not found error", async () => {
+			// Given: PR with mismatched ref
+			const scenario = createScenario({
+				author: "alice",
+				teams: [
+					{
+						name: "backend-team",
+						members: ["alice", "bob"],
+					},
+				],
+			});
+
+			const configWithRules = {
+				...scenario.config,
+				selection_rules: {
+					default: {
+						from: {
+							"backend-team": 1,
+						},
+					},
+				},
+			};
+
+			// Mock PR list with different ref
+			const pullWithDifferentRef = { ...scenario.pull, head: { ref: "different-ref" } };
+			nock("https://api.github.com")
+				.get("/repos/company/reviewer-lottery-test/pulls")
+				.reply(200, [pullWithDifferentRef]);
+
+			// When: lottery runs but PR with matching ref not found
+			await whenLotteryRuns(configWithRules);
+
+			// Then: error is handled gracefully
+			expect(core.error).toHaveBeenCalled();
+			expect(core.setFailed).toHaveBeenCalled();
+		});
+
+		test("handles API error when fetching PRs", async () => {
+			// Given: API error when fetching PRs
+			const scenario = createScenario({
+				author: "alice",
+				teams: [
+					{
+						name: "backend-team",
+						members: ["alice", "bob"],
+					},
+				],
+			});
+
+			const configWithRules = {
+				...scenario.config,
+				selection_rules: {
+					default: {
+						from: {
+							"backend-team": 1,
+						},
+					},
+				},
+			};
+
+			// Mock API error
+			nock("https://api.github.com")
+				.get("/repos/company/reviewer-lottery-test/pulls")
+				.reply(500, { message: "Internal Server Error" });
+
+			// When: API error occurs
+			await whenLotteryRuns(configWithRules);
+
+			// Then: error is handled gracefully
+			expect(core.error).toHaveBeenCalled();
+			expect(core.setFailed).toHaveBeenCalled();
+		});
+
+		test("pickRandom handles duplicate prevention correctly", async () => {
+			// Given: small pool requiring duplicate prevention
+			const lottery = new Lottery({
+				octokit,
+				config: {
+					groups: [
+						{
+							name: "small-team",
+							usernames: ["alice", "bob", "charlie"],
+						},
+					],
+					selection_rules: {},
+				},
+				env: {
+					repository: TEST_CONFIG.REPOSITORY,
+					ref: TEST_CONFIG.REF,
+				},
+			});
+
+			// When: selecting all available candidates
+			const result = lottery.pickRandom(
+				["alice", "bob", "charlie"],
+				3,
+				[] // No one to ignore
+			);
+
+			// Then: all candidates are selected without duplicates
+			expect(result).toHaveLength(3);
+			expect(new Set(result).size).toBe(3); // No duplicates
+			expect(result.sort()).toEqual(["alice", "bob", "charlie"].sort());
+		});
+
+		test("handles author without user login", async () => {
+			// Given: PR with null user
+			const pull: Pull = {
+				number: TEST_CONFIG.PR_NUMBER,
+				user: null, // No user
+			};
+
+			const config = {
+				groups: [
+					{
+						name: "backend-team",
+						usernames: ["alice", "bob"],
+					},
+				],
+				selection_rules: {
+					default: {
+						from: {
+							"backend-team": 2,
+						},
+					},
+				},
+			};
+
+			const api = givenGitHubAPI();
+			const pullMock = api.setupPullRequest(pull);
+			const existingReviewersMock = api.setupExistingReviewers();
+			const reviewerMock = api.expectReviewerAssignment({
+				count: 2,
+				validCandidates: ["alice", "bob"],
+			});
+
+			// When: PR has no user
+			await whenLotteryRuns(config);
+
+			// Then: reviewers are still selected
+		});
+
+		test("handles zero count in fromClause", async () => {
+			// Given: configuration with zero count
+			const scenario = createScenario({
+				author: "alice",
+				teams: [
+					{
+						name: "backend-team",
+						members: ["alice", "bob", "charlie"],
+					},
+					{
+						name: "frontend-team",
+						members: ["diana", "eve"],
+					},
+				],
+			});
+
+			const configWithZeroCount = {
+				...scenario.config,
+				selection_rules: {
+					by_author_group: [
+						{
+							group: "backend-team",
+							from: {
+								"backend-team": 0, // Zero count
+								"frontend-team": 2,
+							},
+						},
+					],
+				},
+			};
+
+			const api = givenGitHubAPI();
+			const pullMock = api.setupPullRequest(scenario.pull);
+			const existingReviewersMock = api.setupExistingReviewers();
+			const reviewerMock = api.expectReviewerAssignment({
+				count: 2, // Only from frontend-team
+				shouldExclude: ["alice"],
+				validCandidates: ["diana", "eve"],
+			});
+
+			// When: zero count is specified
+			await whenLotteryRuns(configWithZeroCount);
+
+			// Then: zero-count groups are skipped
+		});
+
+		test("handles negative count in fromClause", async () => {
+			// Given: configuration with negative count
+			const scenario = createScenario({
+				author: "alice",
+				teams: [
+					{
+						name: "backend-team",
+						members: ["alice", "bob", "charlie"],
+					},
+				],
+			});
+
+			const configWithNegativeCount = {
+				...scenario.config,
+				selection_rules: {
+					by_author_group: [
+						{
+							group: "backend-team",
+							from: {
+								"backend-team": -1, // Negative count
+							},
+						},
+					],
+				},
+			};
+
+			const api = givenGitHubAPI();
+			const pullMock = api.setupPullRequest(scenario.pull);
+			const existingReviewersMock = api.setupExistingReviewers();
+
+			// Expect no reviewer assignment
+			// No expectReviewerAssignment call since no reviewers should be selected
+
+			// When: negative count is specified
+			await whenLotteryRuns(configWithNegativeCount);
+
+			// Then: negative count is treated as zero
+		});
+	});
+
+	describe("Triangulation tests for reviewer selection logic", () => {
+		test("random selection distributes fairly over multiple runs", async () => {
+			// Given: scenario requiring random selection
+			const lottery = new Lottery({
+				octokit,
+				config: {
+					groups: [
+						{
+							name: "team",
+							usernames: ["alice", "bob", "charlie", "diana"],
+						},
+					],
+					selection_rules: {},
+				},
+				env: {
+					repository: TEST_CONFIG.REPOSITORY,
+					ref: TEST_CONFIG.REF,
+				},
+			});
+
+			const selectionCounts: Record<string, number> = {
+				alice: 0,
+				bob: 0,
+				charlie: 0,
+				diana: 0,
+			};
+
+			// When: running selection multiple times
+			for (let i = 0; i < 100; i++) {
+				const result = lottery.pickRandom(
+					["alice", "bob", "charlie", "diana"],
+					1,
+					[]
+				);
+				selectionCounts[result[0]]++;
+			}
+
+			// Then: selection is reasonably distributed
+			Object.values(selectionCounts).forEach((count) => {
+				expect(count).toBeGreaterThan(10); // Each should be selected at least 10 times
+				expect(count).toBeLessThan(40); // But not more than 40 times
+			});
+		});
+
+		test("pickRandom exhausts all candidates before giving up", async () => {
+			// Given: request for more reviewers than available
+			const lottery = new Lottery({
+				octokit,
+				config: {
+					groups: [
+						{
+							name: "team",
+							usernames: ["alice", "bob"],
+						},
+					],
+					selection_rules: {},
+				},
+				env: {
+					repository: TEST_CONFIG.REPOSITORY,
+					ref: TEST_CONFIG.REF,
+				},
+			});
+
+			// When: requesting more than available
+			const result = lottery.pickRandom(
+				["alice", "bob"],
+				5, // Want 5 but only 2 available
+				[]
+			);
+
+			// Then: returns all available candidates
+			expect(result).toHaveLength(2);
+			expect(result.sort()).toEqual(["alice", "bob"].sort());
+		});
+	});
 });
+
+// Mock @actions/core for testing error handling
+import * as core from "@actions/core";

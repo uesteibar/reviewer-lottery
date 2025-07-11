@@ -6,12 +6,13 @@ export interface Pull {
 	user: { login: string } | null;
 	number: number;
 }
+
 interface Env {
 	repository: string;
 	ref: string;
 }
 
-class Lottery {
+export class Lottery {
 	octokit: Octokit;
 	config: Config;
 	env: Env;
