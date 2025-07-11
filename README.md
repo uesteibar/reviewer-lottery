@@ -2,6 +2,13 @@
 
 This is a github action to add automatic reviewer lottery to your pull requests.
 
+## Inputs
+
+| Input | Description | Default |
+|-------|-------------|---------|
+| `repo-token` | GitHub token (required) | |
+| `config` | Path to configuration file | `.github/reviewer-lottery.yml` |
+
 ## Quick Start
 
 1. Create `.github/reviewer-lottery.yml` with a simple configuration:
@@ -37,6 +44,7 @@ jobs:
     - uses: fan-k-tamura/reviewer-lottery@v4
       with:
         repo-token: ${{ secrets.GITHUB_TOKEN }}
+        # config: 'path/to/your/config.yml'  # Optional: custom config file path
 ```
 
 ## How It Works
@@ -213,3 +221,19 @@ jobs:
 ```
 
 This approach allows you to control which PRs trigger the reviewer lottery without modifying the lottery configuration itself.
+
+### Custom Configuration File Path
+
+By default, the action looks for configuration at `.github/reviewer-lottery.yml`. You can specify a custom path using the `config` input:
+
+```yaml
+- uses: fan-k-tamura/reviewer-lottery@v4
+  with:
+    repo-token: ${{ secrets.GITHUB_TOKEN }}
+    config: 'custom-path/reviewer-config.yml'
+```
+
+This allows you to:
+- Store configuration in a different location
+- Use different configuration files for different workflows
+- Keep configuration files organized in subdirectories
