@@ -171,6 +171,7 @@ When assigning reviewers, the following priority is used:
 
 - **`"*"`** - Select from all groups
 - **`"!groupname"`** - Select from all groups except the specified one
+- **`"!group1,group2"`** - Select from all groups except the specified ones (comma-separated)
 
 #### Examples
 
@@ -191,6 +192,12 @@ When assigning reviewers, the following priority is used:
   from:
     ops: 1          # 1 from ops team
     "!ops": 2       # 2 from any other team
+
+# Example 4: Exclude multiple specific groups
+- group: backend
+  from:
+    backend: 1              # 1 from backend team
+    "!ops,security": 2      # 2 from any team except ops and security
 ```
 
 ### Excluding Bot PRs

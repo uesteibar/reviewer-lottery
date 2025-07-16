@@ -274,11 +274,14 @@ export class Lottery {
 		}
 
 		if (groupKey.startsWith("!")) {
-			// Exclude specific group
-			const excludeGroup = groupKey.substring(1);
+			// Exclude specific group(s) - support comma-separated list
+			const excludeGroups = groupKey
+				.substring(1)
+				.split(",")
+				.map((g) => g.trim());
 			return this.config.groups
 				.map((g) => g.name)
-				.filter((name) => name !== excludeGroup);
+				.filter((name) => !excludeGroups.includes(name));
 		}
 
 		// Specific group

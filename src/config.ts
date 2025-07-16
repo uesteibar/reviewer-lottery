@@ -104,13 +104,18 @@ const validateFromClause = (
 			}
 		}
 
-		// Validate !groupname syntax
+		// Validate !groupname syntax (support comma-separated list)
 		if (key.startsWith("!")) {
-			const excludeGroup = key.substring(1);
-			if (!groupNames.includes(excludeGroup)) {
-				throw new Error(
-					`Group '${excludeGroup}' in exclusion rule '${key}' does not exist`,
-				);
+			const excludeGroups = key
+				.substring(1)
+				.split(",")
+				.map((g) => g.trim());
+			for (const excludeGroup of excludeGroups) {
+				if (!groupNames.includes(excludeGroup)) {
+					throw new Error(
+						`Group '${excludeGroup}' in exclusion rule '${key}' does not exist`,
+					);
+				}
 			}
 		}
 	}

@@ -599,6 +599,110 @@ describe("Reviewer Lottery System", () => {
 				// Then: reviewers are selected from backend + non-backend groups
 				// Expectations are performed within the mock
 			});
+
+			test('supports "!group" keyword for single group exclusion', async () => {
+				// Given: configuration using "!group" keyword for single exclusion
+				const scenario = createScenario({
+					author: "alice",
+					teams: [
+						{
+							name: "backend",
+							members: ["alice", "bob"],
+						},
+						{
+							name: "frontend",
+							members: ["charlie", "diana"],
+						},
+						{
+							name: "ops",
+							members: ["eve", "frank"],
+						},
+					],
+				});
+
+				const configWithRules = {
+					...scenario.config,
+					selection_rules: {
+						by_author_group: [
+							{
+								group: "backend",
+								from: {
+									"!ops": 2, // 2 from groups excluding ops only
+								},
+							},
+						],
+					},
+				};
+
+				const api = givenGitHubAPI();
+				const _pullMock = api.setupPullRequest(scenario.pull);
+				const _existingReviewersMock = api.setupExistingReviewers(); // Empty existing reviewers
+				const _reviewerMock = api.expectReviewerAssignment({
+					count: 2,
+					shouldExclude: ["alice"],
+					validCandidates: ["bob", "charlie", "diana"], // Available from backend and frontend only (ops excluded)
+				});
+
+				// When: backend team member opens PR
+				await whenLotteryRuns(configWithRules);
+
+				// Then: reviewers are selected from groups excluding ops
+				// Expectations are performed within the mock
+			});
+
+			test('supports "!group1,group2" keyword for multiple group exclusion', async () => {
+				// Given: configuration using "!group1,group2" keyword for multiple exclusions
+				const scenario = createScenario({
+					author: "alice",
+					teams: [
+						{
+							name: "backend",
+							members: ["alice", "bob"],
+						},
+						{
+							name: "frontend",
+							members: ["charlie", "diana"],
+						},
+						{
+							name: "ops",
+							members: ["eve", "frank"],
+						},
+						{
+							name: "security",
+							members: ["george", "helen"],
+						},
+					],
+				});
+
+				const configWithRules = {
+					...scenario.config,
+					selection_rules: {
+						by_author_group: [
+							{
+								group: "backend",
+								from: {
+									"!ops,security": 2, // 2 from groups excluding ops and security
+								},
+							},
+						],
+					},
+				};
+
+				const api = givenGitHubAPI();
+				const _pullMock = api.setupPullRequest(scenario.pull);
+				const _existingReviewersMock = api.setupExistingReviewers(); // Empty existing reviewers
+				const _reviewerMock = api.expectReviewerAssignment({
+					count: 2,
+					shouldExclude: ["alice"],
+					validCandidates: ["bob", "charlie", "diana"], // Available from backend and frontend only (ops and security excluded)
+				});
+
+				// When: backend team member opens PR
+				await whenLotteryRuns(configWithRules);
+
+				// Then: reviewers are selected from groups excluding ops and security
+				// Expectations are performed within the mock
+			});
 		});
 	});
 
