@@ -111,7 +111,16 @@ Reviewing code is good and fun, but we want to be able to disconnect from time t
 
 ### Advanced Configuration
 
-The configuration uses `selection_rules` to provide maximum flexibility for reviewer assignment:
+The configuration uses `selection_rules` to provide maximum flexibility for reviewer assignment.
+
+#### Selection Rules Overview
+
+The action supports three types of selection rules:
+- **`default`**: Fallback rules for any author
+- **`by_author_group`**: Rules specific to authors in particular groups
+- **`non_group_members`**: Rules for authors not in any group
+
+#### Complete Configuration Example
 
 ```yaml
 groups:
@@ -159,6 +168,12 @@ selection_rules:
         "!ops": 1     # 1 reviewer from any team except ops
 ```
 
+#### Special Keywords
+
+- **`"*"`** - Select from all groups
+- **`"!groupname"`** - Select from all groups except the specified one
+- **`"!group1,group2"`** - Select from all groups except the specified ones (comma-separated)
+
 #### Priority Rules
 
 When assigning reviewers, the following priority is used:
@@ -167,11 +182,34 @@ When assigning reviewers, the following priority is used:
 2. **For authors not in any group**: Uses `non_group_members` if defined, falls back to `default`
 3. **No reviewers assigned**: If no `from` clause is found or is empty
 
-#### Special Keywords
+#### When No Reviewers Are Added
 
-- **`"*"`** - Select from all groups
-- **`"!groupname"`** - Select from all groups except the specified one
-- **`"!group1,group2"`** - Select from all groups except the specified ones (comma-separated)
+Reviewers will **not** be added in the following cases:
+
+1. **Empty or missing `from` clause**: When a selection rule exists but has no `from` entries
+   ```yaml
+   - group: backend
+     # No 'from' clause - no reviewers will be assigned
+   ```
+
+2. **No matching rules**: When no selection rule matches the PR author
+   ```yaml
+   selection_rules:
+     by_author_group:
+       - group: frontend
+         from:
+           frontend: 1
+   # If PR author is from 'backend' group and no default rule exists, no reviewers are assigned
+   ```
+
+3. **Insufficient candidates**: When there aren't enough eligible reviewers after exclusions
+   ```yaml
+   - group: solo-team
+     from:
+       solo-team: 2  # If solo-team only has 1 member (the author), no reviewers can be assigned
+   ```
+
+4. **All candidates excluded**: When all potential reviewers are excluded (author, existing reviewers, etc.)
 
 #### Examples
 
