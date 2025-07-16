@@ -40,7 +40,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v4
     - uses: fan-k-tamura/reviewer-lottery@v4
       with:
         repo-token: ${{ secrets.GITHUB_TOKEN }}
@@ -221,7 +221,7 @@ jobs:
       !contains(github.event.pull_request.user.login, '[bot]')
 
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v4
     - uses: fan-k-tamura/reviewer-lottery@v4
       with:
         repo-token: ${{ secrets.GITHUB_TOKEN }}
