@@ -1,5 +1,5 @@
-import { Lottery } from "../src/lottery";
-import type { Logger, ActionOutputs, GitHubService } from "../src/interfaces";
+import { Lottery } from "../../src/lottery";
+import type { Logger, ActionOutputs, GitHubService } from "../../src/interfaces";
 
 // Mock implementations for testing business logic
 const createMockLogger = (): Logger => ({

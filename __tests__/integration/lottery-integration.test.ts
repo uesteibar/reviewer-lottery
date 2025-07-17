@@ -1,7 +1,7 @@
 import { getOctokit } from "@actions/github";
 import nock from "nock";
-import { Lottery } from "../src/lottery";
-import type { Logger, ActionOutputs, GitHubService, Pull } from "../src/interfaces";
+import { Lottery } from "../../src/lottery";
+import type { Logger, ActionOutputs, GitHubService, Pull } from "../../src/interfaces";
 
 // Mock implementations for testing
 const createMockLogger = (): Logger => ({
