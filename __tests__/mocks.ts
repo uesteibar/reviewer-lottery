@@ -1,4 +1,9 @@
-import type { ActionOutputs, GitHubService, Logger, Pull } from "../src/interfaces";
+import type {
+	ActionOutputs,
+	GitHubService,
+	Logger,
+	Pull,
+} from "../src/interfaces";
 
 /**
  * Mock implementations for testing the Lottery class without GitHub dependencies
@@ -32,14 +37,17 @@ export class MockLogger implements Logger {
 	}
 
 	// Helper methods for testing
-	getCallsForMethod(method: string): Array<{ method: string; args: unknown[] }> {
+	getCallsForMethod(
+		method: string,
+	): Array<{ method: string; args: unknown[] }> {
 		return this.calls.filter((call) => call.method === method);
 	}
 
 	wasCalledWith(method: string, ...args: unknown[]): boolean {
 		return this.calls.some(
-			(call) => call.method === method && 
-			JSON.stringify(call.args) === JSON.stringify(args)
+			(call) =>
+				call.method === method &&
+				JSON.stringify(call.args) === JSON.stringify(args),
 		);
 	}
 
@@ -51,7 +59,8 @@ export class MockLogger implements Logger {
 export class MockActionOutputs implements ActionOutputs {
 	public outputs: Record<string, string> = {};
 	public failures: string[] = [];
-	public summaries: Array<{ heading: string; table: Array<[string, string]> }> = [];
+	public summaries: Array<{ heading: string; table: Array<[string, string]> }> =
+		[];
 
 	setOutput(name: string, value: string): void {
 		this.outputs[name] = value;
@@ -61,7 +70,10 @@ export class MockActionOutputs implements ActionOutputs {
 		this.failures.push(message);
 	}
 
-	async addSummary(heading: string, table: Array<[string, string]>): Promise<void> {
+	async addSummary(
+		heading: string,
+		table: Array<[string, string]>,
+	): Promise<void> {
 		this.summaries.push({ heading, table });
 	}
 
@@ -98,7 +110,7 @@ export class MockGitHubService implements GitHubService {
 
 	async setReviewers(prNumber: number, reviewers: string[]): Promise<object> {
 		this.calls.push({ method: "setReviewers", args: [prNumber, reviewers] });
-		
+
 		if (this.shouldThrowErrors.has("setReviewers")) {
 			throw this.shouldThrowErrors.get("setReviewers");
 		}
@@ -108,7 +120,7 @@ export class MockGitHubService implements GitHubService {
 
 	async getExistingReviewers(prNumber: number): Promise<string[]> {
 		this.calls.push({ method: "getExistingReviewers", args: [prNumber] });
-		
+
 		if (this.shouldThrowErrors.has("getExistingReviewers")) {
 			throw this.shouldThrowErrors.get("getExistingReviewers");
 		}
@@ -118,7 +130,7 @@ export class MockGitHubService implements GitHubService {
 
 	async getPRAuthor(prNumber: number): Promise<string> {
 		this.calls.push({ method: "getPRAuthor", args: [prNumber] });
-		
+
 		if (this.shouldThrowErrors.has("getPRAuthor")) {
 			throw this.shouldThrowErrors.get("getPRAuthor");
 		}
@@ -128,7 +140,7 @@ export class MockGitHubService implements GitHubService {
 
 	async findPRByRef(ref: string): Promise<Pull | undefined> {
 		this.calls.push({ method: "findPRByRef", args: [ref] });
-		
+
 		if (this.shouldThrowErrors.has("findPRByRef")) {
 			throw this.shouldThrowErrors.get("findPRByRef");
 		}
@@ -153,14 +165,17 @@ export class MockGitHubService implements GitHubService {
 		this.shouldThrowErrors.set(method, error);
 	}
 
-	getCallsForMethod(method: string): Array<{ method: string; args: unknown[] }> {
+	getCallsForMethod(
+		method: string,
+	): Array<{ method: string; args: unknown[] }> {
 		return this.calls.filter((call) => call.method === method);
 	}
 
 	wasCalledWith(method: string, ...args: unknown[]): boolean {
 		return this.calls.some(
-			(call) => call.method === method && 
-			JSON.stringify(call.args) === JSON.stringify(args)
+			(call) =>
+				call.method === method &&
+				JSON.stringify(call.args) === JSON.stringify(args),
 		);
 	}
 
@@ -200,9 +215,12 @@ export function createMockServices(scenario: TestScenario) {
 	});
 
 	githubService.mockPRAuthorForPR(scenario.prNumber, scenario.author);
-	
+
 	if (scenario.existingReviewers) {
-		githubService.mockExistingReviewersForPR(scenario.prNumber, scenario.existingReviewers);
+		githubService.mockExistingReviewersForPR(
+			scenario.prNumber,
+			scenario.existingReviewers,
+		);
 	}
 
 	return { logger, actionOutputs, githubService };

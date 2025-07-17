@@ -1,28 +1,26 @@
 import { Lottery } from "../../src/lottery";
-import type { Logger, ActionOutputs, GitHubService } from "../../src/interfaces";
 
-// Mock implementations for testing business logic
-const createMockLogger = (): Logger => ({
-	startGroup: jest.fn(),
-	endGroup: jest.fn(),
-	info: jest.fn(),
-	debug: jest.fn(),
-	error: jest.fn(),
-	warning: jest.fn(),
-});
+// Type for accessing private methods in tests
+type LotteryWithPrivateAccess = {
+	resolveGroupSelection(groupKey: string, authorGroup: string | null): string[];
+	getCandidatesFromGroups(groupNames: string[]): string[];
+	selectReviewersWithRules(
+		author: string,
+		existingReviewers: string[],
+	): string[];
+	selectFromMultipleGroups(
+		fromClause: Record<string, number>,
+		author: string,
+		authorGroup: string | null,
+		existingReviewers: string[],
+	): string[];
+};
 
-const createMockActionOutputs = (): ActionOutputs => ({
-	setOutput: jest.fn(),
-	setFailed: jest.fn(),
-	addSummary: jest.fn().mockResolvedValue(undefined),
-});
-
-const createMockGitHubService = (): GitHubService => ({
-	setReviewers: jest.fn().mockResolvedValue({}),
-	getExistingReviewers: jest.fn().mockResolvedValue([]),
-	getPRAuthor: jest.fn().mockResolvedValue(""),
-	findPRByRef: jest.fn().mockResolvedValue(undefined),
-});
+import {
+	createMockActionOutputs,
+	createMockGitHubService,
+	createMockLogger,
+} from "../test-helpers";
 
 describe("Lottery Business Logic", () => {
 	describe("pickRandom", () => {
@@ -44,63 +42,95 @@ describe("Lottery Business Logic", () => {
 			});
 		});
 
-		test("selects random items from pool", () => {
-			const items = ["alice", "bob", "charlie", "diana"];
-			const result = lottery.pickRandom(items, 2, []);
+		interface PickRandomTestCase {
+			name: string;
+			items: string[];
+			count: number;
+			ignore: string[];
+			expectedLength: number;
+			validator?: (result: string[], items: string[], ignore: string[]) => void;
+		}
 
-			expect(result).toHaveLength(2);
-			result.forEach((item) => {
-				expect(items).toContain(item);
-			});
-		});
+		const pickRandomTestCases: PickRandomTestCase[] = [
+			{
+				name: "selects random items from pool",
+				items: ["alice", "bob", "charlie", "diana"],
+				count: 2,
+				ignore: [],
+				expectedLength: 2,
+				validator: (result, items) => {
+					result.forEach((item) => {
+						expect(items).toContain(item);
+					});
+				},
+			},
+			{
+				name: "excludes ignored items",
+				items: ["alice", "bob", "charlie", "diana"],
+				count: 2,
+				ignore: ["alice", "bob"],
+				expectedLength: 2,
+				validator: (result, _, ignore) => {
+					result.forEach((item) => {
+						expect(ignore).not.toContain(item);
+					});
+				},
+			},
+			{
+				name: "returns empty array when no valid candidates",
+				items: ["alice", "bob"],
+				count: 2,
+				ignore: ["alice", "bob"],
+				expectedLength: 0,
+			},
+			{
+				name: "returns all available items when n exceeds pool size",
+				items: ["alice", "bob"],
+				count: 5,
+				ignore: [],
+				expectedLength: 2,
+				validator: (result) => {
+					expect(result.sort()).toEqual(["alice", "bob"]);
+				},
+			},
+			{
+				name: "does not return duplicate items",
+				items: ["alice", "bob", "charlie"],
+				count: 3,
+				ignore: [],
+				expectedLength: 3,
+				validator: (result) => {
+					expect(new Set(result).size).toBe(3);
+				},
+			},
+			{
+				name: "handles empty items array",
+				items: [],
+				count: 2,
+				ignore: [],
+				expectedLength: 0,
+			},
+			{
+				name: "handles zero count",
+				items: ["alice", "bob"],
+				count: 0,
+				ignore: [],
+				expectedLength: 0,
+			},
+		];
 
-		test("excludes ignored items", () => {
-			const items = ["alice", "bob", "charlie", "diana"];
-			const ignore = ["alice", "bob"];
-			const result = lottery.pickRandom(items, 2, ignore);
+		pickRandomTestCases.forEach(
+			({ name, items, count, ignore, expectedLength, validator }) => {
+				test(name, () => {
+					const result = lottery.pickRandom(items, count, ignore);
 
-			expect(result).toHaveLength(2);
-			result.forEach((item) => {
-				expect(ignore).not.toContain(item);
-			});
-		});
-
-		test("returns empty array when no valid candidates", () => {
-			const items = ["alice", "bob"];
-			const ignore = ["alice", "bob"];
-			const result = lottery.pickRandom(items, 2, ignore);
-
-			expect(result).toEqual([]);
-		});
-
-		test("returns all available items when n exceeds pool size", () => {
-			const items = ["alice", "bob"];
-			const result = lottery.pickRandom(items, 5, []);
-
-			expect(result).toHaveLength(2);
-			expect(result.sort()).toEqual(["alice", "bob"]);
-		});
-
-		test("does not return duplicate items", () => {
-			const items = ["alice", "bob", "charlie"];
-			const result = lottery.pickRandom(items, 3, []);
-
-			expect(result).toHaveLength(3);
-			expect(new Set(result).size).toBe(3);
-		});
-
-		test("handles empty items array", () => {
-			const result = lottery.pickRandom([], 2, []);
-
-			expect(result).toEqual([]);
-		});
-
-		test("handles zero count", () => {
-			const items = ["alice", "bob"];
-			const result = lottery.pickRandom(items, 0, []);
-
-			expect(result).toEqual([]);
-		});
+					expect(result).toHaveLength(expectedLength);
+					if (validator) {
+						validator(result, items, ignore);
+					}
+				});
+			},
+		);
 	});
 
 	describe("getAuthorGroup", () => {
@@ -135,16 +165,45 @@ describe("Lottery Business Logic", () => {
 			});
 		});
 
-		test("returns group name when author is in group", () => {
-			expect(lottery.getAuthorGroup("alice")).toBe("backend");
-			expect(lottery.getAuthorGroup("bob")).toBe("backend");
-			expect(lottery.getAuthorGroup("charlie")).toBe("frontend");
-			expect(lottery.getAuthorGroup("diana")).toBe("frontend");
-			expect(lottery.getAuthorGroup("eve")).toBe("ops");
-		});
+		interface GetAuthorGroupTestCase {
+			name: string;
+			author: string;
+			expected: string | null;
+		}
 
-		test("returns null when author is not in any group", () => {
-			expect(lottery.getAuthorGroup("unknown")).toBeNull();
+		const getAuthorGroupTestCases: GetAuthorGroupTestCase[] = [
+			{
+				name: "returns backend group for alice",
+				author: "alice",
+				expected: "backend",
+			},
+			{
+				name: "returns backend group for bob",
+				author: "bob",
+				expected: "backend",
+			},
+			{
+				name: "returns frontend group for charlie",
+				author: "charlie",
+				expected: "frontend",
+			},
+			{
+				name: "returns frontend group for diana",
+				author: "diana",
+				expected: "frontend",
+			},
+			{ name: "returns ops group for eve", author: "eve", expected: "ops" },
+			{
+				name: "returns null for unknown author",
+				author: "unknown",
+				expected: null,
+			},
+		];
+
+		getAuthorGroupTestCases.forEach(({ name, author, expected }) => {
+			test(name, () => {
+				expect(lottery.getAuthorGroup(author)).toBe(expected);
+			});
 		});
 
 		test("returns first group if user is in multiple groups", () => {
@@ -274,43 +333,57 @@ describe("Lottery Business Logic", () => {
 		});
 
 		test("returns all groups for wildcard '*'", () => {
-			const result = (lottery as any).resolveGroupSelection("*", null);
+			const result = (
+				lottery as unknown as LotteryWithPrivateAccess
+			).resolveGroupSelection("*", null);
 
 			expect(result).toEqual(["backend", "frontend", "ops"]);
 		});
 
 		test("returns specific group for group name", () => {
-			const result = (lottery as any).resolveGroupSelection("backend", null);
+			const result = (
+				lottery as unknown as LotteryWithPrivateAccess
+			).resolveGroupSelection("backend", null);
 
 			expect(result).toEqual(["backend"]);
 		});
 
 		test("excludes single group with '!' prefix", () => {
-			const result = (lottery as any).resolveGroupSelection("!backend", null);
+			const result = (
+				lottery as unknown as LotteryWithPrivateAccess
+			).resolveGroupSelection("!backend", null);
 
 			expect(result).toEqual(["frontend", "ops"]);
 		});
 
 		test("excludes multiple groups with '!' prefix and comma separation", () => {
-			const result = (lottery as any).resolveGroupSelection("!backend,frontend", null);
+			const result = (
+				lottery as unknown as LotteryWithPrivateAccess
+			).resolveGroupSelection("!backend,frontend", null);
 
 			expect(result).toEqual(["ops"]);
 		});
 
 		test("handles whitespace in exclusion list", () => {
-			const result = (lottery as any).resolveGroupSelection("!backend, frontend", null);
+			const result = (
+				lottery as unknown as LotteryWithPrivateAccess
+			).resolveGroupSelection("!backend, frontend", null);
 
 			expect(result).toEqual(["ops"]);
 		});
 
 		test("returns empty array when excluding all groups", () => {
-			const result = (lottery as any).resolveGroupSelection("!backend,frontend,ops", null);
+			const result = (
+				lottery as unknown as LotteryWithPrivateAccess
+			).resolveGroupSelection("!backend,frontend,ops", null);
 
 			expect(result).toEqual([]);
 		});
 
 		test("returns empty array for non-existent group", () => {
-			const result = (lottery as any).resolveGroupSelection("nonexistent", null);
+			const result = (
+				lottery as unknown as LotteryWithPrivateAccess
+			).resolveGroupSelection("nonexistent", null);
 
 			expect(result).toEqual(["nonexistent"]);
 		});
@@ -349,31 +422,41 @@ describe("Lottery Business Logic", () => {
 		});
 
 		test("returns candidates from single group", () => {
-			const result = (lottery as any).getCandidatesFromGroups(["backend"]);
+			const result = (
+				lottery as unknown as LotteryWithPrivateAccess
+			).getCandidatesFromGroups(["backend"]);
 
 			expect(result).toEqual(["alice", "bob"]);
 		});
 
 		test("returns candidates from multiple groups", () => {
-			const result = (lottery as any).getCandidatesFromGroups(["backend", "frontend"]);
+			const result = (
+				lottery as unknown as LotteryWithPrivateAccess
+			).getCandidatesFromGroups(["backend", "frontend"]);
 
 			expect(result).toEqual(["alice", "bob", "charlie", "diana"]);
 		});
 
 		test("returns empty array for non-existent group", () => {
-			const result = (lottery as any).getCandidatesFromGroups(["nonexistent"]);
+			const result = (
+				lottery as unknown as LotteryWithPrivateAccess
+			).getCandidatesFromGroups(["nonexistent"]);
 
 			expect(result).toEqual([]);
 		});
 
 		test("handles empty groups array", () => {
-			const result = (lottery as any).getCandidatesFromGroups([]);
+			const result = (
+				lottery as unknown as LotteryWithPrivateAccess
+			).getCandidatesFromGroups([]);
 
 			expect(result).toEqual([]);
 		});
 
 		test("handles mix of existing and non-existing groups", () => {
-			const result = (lottery as any).getCandidatesFromGroups(["backend", "nonexistent", "ops"]);
+			const result = (
+				lottery as unknown as LotteryWithPrivateAccess
+			).getCandidatesFromGroups(["backend", "nonexistent", "ops"]);
 
 			expect(result).toEqual(["alice", "bob", "eve"]);
 		});
@@ -430,7 +513,9 @@ describe("Lottery Business Logic", () => {
 		});
 
 		test("uses group-specific rules when author is in group", () => {
-			const result = (lottery as any).selectReviewersWithRules("alice", []);
+			const result = (
+				lottery as unknown as LotteryWithPrivateAccess
+			).selectReviewersWithRules("alice", []);
 
 			// Should use backend group rule: 2 from backend + 1 from frontend
 			expect(result).toHaveLength(3);
@@ -439,7 +524,9 @@ describe("Lottery Business Logic", () => {
 		});
 
 		test("uses non-group-members rule when author is not in any group", () => {
-			const result = (lottery as any).selectReviewersWithRules("external", []);
+			const result = (
+				lottery as unknown as LotteryWithPrivateAccess
+			).selectReviewersWithRules("external", []);
 
 			// Should use non_group_members rule: 1 from backend + 2 from frontend
 			expect(result).toHaveLength(3);
@@ -478,7 +565,9 @@ describe("Lottery Business Logic", () => {
 				},
 			});
 
-			const result = (lotteryWithoutSpecificRule as any).selectReviewersWithRules("alice", []);
+			const result = (
+				lotteryWithoutSpecificRule as unknown as LotteryWithPrivateAccess
+			).selectReviewersWithRules("alice", []);
 
 			// Should use default rule: 1 from backend + 1 from frontend
 			expect(result).toHaveLength(2);
@@ -487,7 +576,9 @@ describe("Lottery Business Logic", () => {
 
 		test("considers existing reviewers in selection", () => {
 			const existingReviewers = ["bob", "diana"];
-			const result = (lottery as any).selectReviewersWithRules("alice", existingReviewers);
+			const result = (
+				lottery as unknown as LotteryWithPrivateAccess
+			).selectReviewersWithRules("alice", existingReviewers);
 
 			// Should use backend group rule: 2 from backend + 1 from frontend
 			// But bob (backend) and diana (frontend) are already reviewers
@@ -519,7 +610,9 @@ describe("Lottery Business Logic", () => {
 				},
 			});
 
-			const result = (lotteryWithoutRules as any).selectReviewersWithRules("alice", []);
+			const result = (
+				lotteryWithoutRules as unknown as LotteryWithPrivateAccess
+			).selectReviewersWithRules("alice", []);
 
 			expect(result).toEqual([]);
 		});
@@ -558,7 +651,9 @@ describe("Lottery Business Logic", () => {
 				backend: 2,
 				frontend: 1,
 			};
-			const result = (lottery as any).selectFromMultipleGroups(fromClause, "alice", "backend", []);
+			const result = (
+				lottery as unknown as LotteryWithPrivateAccess
+			).selectFromMultipleGroups(fromClause, "alice", "backend", []);
 
 			expect(result).toHaveLength(3);
 			expect(result).not.toContain("alice");
@@ -569,7 +664,9 @@ describe("Lottery Business Logic", () => {
 				backend: 2,
 				frontend: 0,
 			};
-			const result = (lottery as any).selectFromMultipleGroups(fromClause, "alice", "backend", []);
+			const result = (
+				lottery as unknown as LotteryWithPrivateAccess
+			).selectFromMultipleGroups(fromClause, "alice", "backend", []);
 
 			expect(result).toHaveLength(2);
 			expect(result).not.toContain("alice");
@@ -585,7 +682,14 @@ describe("Lottery Business Logic", () => {
 				frontend: 1,
 			};
 			const existingReviewers = ["bob", "diana"];
-			const result = (lottery as any).selectFromMultipleGroups(fromClause, "alice", "backend", existingReviewers);
+			const result = (
+				lottery as unknown as LotteryWithPrivateAccess
+			).selectFromMultipleGroups(
+				fromClause,
+				"alice",
+				"backend",
+				existingReviewers,
+			);
 
 			// bob (backend) and diana (frontend) are already reviewers
 			// Need 1 more from backend, 0 more from frontend
@@ -597,7 +701,9 @@ describe("Lottery Business Logic", () => {
 			const fromClause = {
 				"*": 3,
 			};
-			const result = (lottery as any).selectFromMultipleGroups(fromClause, "alice", "backend", []);
+			const result = (
+				lottery as unknown as LotteryWithPrivateAccess
+			).selectFromMultipleGroups(fromClause, "alice", "backend", []);
 
 			expect(result).toHaveLength(3);
 			expect(result).not.toContain("alice");
@@ -607,7 +713,9 @@ describe("Lottery Business Logic", () => {
 			const fromClause = {
 				"!backend": 2,
 			};
-			const result = (lottery as any).selectFromMultipleGroups(fromClause, "alice", "backend", []);
+			const result = (
+				lottery as unknown as LotteryWithPrivateAccess
+			).selectFromMultipleGroups(fromClause, "alice", "backend", []);
 
 			expect(result).toHaveLength(2);
 			expect(result).not.toContain("alice");

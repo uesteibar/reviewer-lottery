@@ -1,30 +1,13 @@
 import { getOctokit } from "@actions/github";
 import nock from "nock";
+import type { Pull } from "../../src/interfaces";
 import { Lottery } from "../../src/lottery";
-import type { Logger, ActionOutputs, GitHubService, Pull } from "../../src/interfaces";
-
-// Mock implementations for testing
-const createMockLogger = (): Logger => ({
-	startGroup: jest.fn(),
-	endGroup: jest.fn(),
-	info: jest.fn(),
-	debug: jest.fn(),
-	error: jest.fn(),
-	warning: jest.fn(),
-});
-
-const createMockActionOutputs = (): ActionOutputs => ({
-	setOutput: jest.fn(),
-	setFailed: jest.fn(),
-	addSummary: jest.fn().mockResolvedValue(undefined),
-});
-
-const createMockGitHubService = (): GitHubService => ({
-	setReviewers: jest.fn().mockResolvedValue({}),
-	getExistingReviewers: jest.fn().mockResolvedValue([]),
-	getPRAuthor: jest.fn().mockResolvedValue(""),
-	findPRByRef: jest.fn().mockResolvedValue(undefined),
-});
+import {
+	createMockActionOutputs,
+	createMockGitHubService,
+	createMockLogger,
+	TEST_CONFIG,
+} from "../test-helpers";
 
 // Mock @actions/core to prevent error messages during tests and test new functionality
 jest.mock("@actions/core", () => ({
@@ -43,14 +26,9 @@ jest.mock("@actions/core", () => ({
 	},
 }));
 
-// Test constants
-const TEST_CONFIG = {
-	REPOSITORY: "company/reviewer-lottery-test",
-	PR_NUMBER: 42,
-	REF: "refs/pull/feature-branch",
-} as const;
+// Now using TEST_CONFIG from test-helpers
 
-const octokit = getOctokit("test-token");
+const _octokit = getOctokit("test-token");
 
 // Scenario builders - focusing on user intent and business context
 interface TestScenario {
@@ -180,17 +158,17 @@ const whenLotteryRuns = async (
 	const mockGitHubService = createMockGitHubService();
 	const mockLogger = createMockLogger();
 	const mockActionOutputs = createMockActionOutputs();
-	
+
 	// Mock the GitHub service to handle the API calls that were previously handled by nock
 	const pull = {
 		number: prInfo?.prNumber || TEST_CONFIG.PR_NUMBER,
 		user: prInfo?.author ? { login: prInfo.author } : null,
 	};
-	
+
 	(mockGitHubService.findPRByRef as jest.Mock).mockResolvedValue(pull);
 	(mockGitHubService.getExistingReviewers as jest.Mock).mockResolvedValue([]);
 	(mockGitHubService.setReviewers as jest.Mock).mockResolvedValue({});
-	
+
 	const lottery = new Lottery({
 		logger: mockLogger,
 		actionOutputs: mockActionOutputs,
@@ -202,9 +180,9 @@ const whenLotteryRuns = async (
 		},
 		prInfo,
 	});
-	
+
 	await lottery.run();
-	
+
 	return { mockGitHubService, mockLogger, mockActionOutputs };
 };
 
@@ -297,30 +275,42 @@ describe("Reviewer Lottery System", () => {
 			};
 
 			// When: Alice opens a PR and the lottery runs
-			const { mockGitHubService, mockLogger, mockActionOutputs } = await whenLotteryRuns(configWithRules, {
-				prNumber: TEST_CONFIG.PR_NUMBER,
-				repository: TEST_CONFIG.REPOSITORY,
-				ref: TEST_CONFIG.REF,
-				author: "alice",
-			});
+			const { mockGitHubService, mockLogger, mockActionOutputs } =
+				await whenLotteryRuns(configWithRules, {
+					prNumber: TEST_CONFIG.PR_NUMBER,
+					repository: TEST_CONFIG.REPOSITORY,
+					ref: TEST_CONFIG.REF,
+					author: "alice",
+				});
 
 			// Then: correct action outputs are set
-			expect(mockActionOutputs.setOutput).toHaveBeenCalledWith("reviewer-count", "2");
-			expect(mockActionOutputs.setOutput).toHaveBeenCalledWith("assignment-successful", "true");
+			expect(mockActionOutputs.setOutput).toHaveBeenCalledWith(
+				"reviewer-count",
+				"2",
+			);
+			expect(mockActionOutputs.setOutput).toHaveBeenCalledWith(
+				"assignment-successful",
+				"true",
+			);
 
 			// Verify structured logging
-			expect(mockLogger.startGroup).toHaveBeenCalledWith("🎯 Reviewer Lottery - Starting");
-			expect(mockLogger.startGroup).toHaveBeenCalledWith("📝 Assigning reviewers");
+			expect(mockLogger.startGroup).toHaveBeenCalledWith(
+				"🎯 Reviewer Lottery - Starting",
+			);
+			expect(mockLogger.startGroup).toHaveBeenCalledWith(
+				"📝 Assigning reviewers",
+			);
 			expect(mockLogger.endGroup).toHaveBeenCalledTimes(3);
 
 			// Verify reviewers were assigned
 			expect(mockGitHubService.setReviewers).toHaveBeenCalledWith(
 				TEST_CONFIG.PR_NUMBER,
-				expect.any(Array)
+				expect.any(Array),
 			);
-			
+
 			// Verify correct number of reviewers were selected
-			const setReviewersCall = (mockGitHubService.setReviewers as jest.Mock).mock.calls[0];
+			const setReviewersCall = (mockGitHubService.setReviewers as jest.Mock)
+				.mock.calls[0];
 			expect(setReviewersCall[1]).toHaveLength(2);
 			// Should exclude author
 			expect(setReviewersCall[1]).not.toContain("alice");
@@ -431,9 +421,7 @@ describe("Reviewer Lottery System", () => {
 		});
 	});
 
-	describe("Enhanced selection rules", () => {
-
-	});
+	describe("Enhanced selection rules", () => {});
 
 	describe("Existing reviewers handling", () => {
 		test("reduces additional reviewers when group members are already assigned", async () => {
@@ -1076,10 +1064,10 @@ describe("Reviewer Lottery System", () => {
 			const mockGitHubService = createMockGitHubService();
 			const mockLogger = createMockLogger();
 			const mockActionOutputs = createMockActionOutputs();
-			
+
 			// Mock PR not found
 			(mockGitHubService.findPRByRef as jest.Mock).mockResolvedValue(undefined);
-			
+
 			const lottery = new Lottery({
 				logger: mockLogger,
 				actionOutputs: mockActionOutputs,
@@ -1126,10 +1114,12 @@ describe("Reviewer Lottery System", () => {
 			const mockGitHubService = createMockGitHubService();
 			const mockLogger = createMockLogger();
 			const mockActionOutputs = createMockActionOutputs();
-			
+
 			// Mock API error
-			(mockGitHubService.findPRByRef as jest.Mock).mockRejectedValue(new Error("Internal Server Error"));
-			
+			(mockGitHubService.findPRByRef as jest.Mock).mockRejectedValue(
+				new Error("Internal Server Error"),
+			);
+
 			const lottery = new Lottery({
 				logger: mockLogger,
 				actionOutputs: mockActionOutputs,
@@ -1148,7 +1138,6 @@ describe("Reviewer Lottery System", () => {
 			expect(mockLogger.error).toHaveBeenCalled();
 			expect(mockActionOutputs.setFailed).toHaveBeenCalled();
 		});
-
 
 		test("handles author without user login", async () => {
 			// Given: PR with null user
@@ -1318,9 +1307,5 @@ describe("Reviewer Lottery System", () => {
 				expect(count).toBeLessThan(40); // But not more than 40 times
 			});
 		});
-
 	});
 });
-
-// Mock @actions/core for testing error handling
-import * as core from "@actions/core";
