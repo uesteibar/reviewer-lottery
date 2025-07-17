@@ -13,14 +13,26 @@ This is a GitHub Action that automatically assigns reviewers to Pull Requests us
 - **src/main.ts**: Entry point that extracts PR information from GitHub Actions context and orchestrates the lottery process
 - **src/lottery.ts**: Core lottery logic containing the `Lottery` class that handles reviewer selection and GitHub API interactions
 - **src/config.ts**: Configuration parsing and validation, loads YAML config from `.github/reviewer-lottery.yml`
+- **src/interfaces.ts**: TypeScript interfaces for all service contracts and data structures
+- **src/actions-service.ts**: Service implementations for GitHub Actions logging and outputs
+- **src/github-service.ts**: Service implementation for GitHub API interactions
 
 ### Key Classes
 
 - **Lottery**: Main class that manages the reviewer selection process
-  - Handles GitHub API interactions via `@actions/github`
+  - Uses dependency injection for all external services
   - Implements complex selection rules (by author group, fallback rules, etc.)
   - Manages exclusion logic (author, existing reviewers, selected reviewers)
   - Provides comprehensive logging and GitHub Action outputs
+
+### Service Layer
+
+- **GitHubServiceImpl**: Handles all GitHub API interactions
+  - Get PR information, existing reviewers, and PR authors
+  - Set reviewers on pull requests
+  - Find PRs by Git reference
+- **LoggerImpl**: Wraps GitHub Actions core logging with structured output
+- **ActionOutputsImpl**: Manages GitHub Actions outputs and job summaries
 
 ### Selection Rules Architecture
 
