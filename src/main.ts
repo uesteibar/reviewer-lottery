@@ -1,7 +1,9 @@
 import * as core from "@actions/core";
 import { context, getOctokit } from "@actions/github";
+import { ActionOutputsImpl, LoggerImpl } from "./actions-service";
 import { getConfig } from "./config";
-import { runLottery } from "./lottery";
+import { GitHubServiceImpl } from "./github-service";
+import { Lottery } from "./lottery";
 
 function extractPRInfoFromContext(): {
 	prNumber: number;
@@ -65,13 +67,23 @@ async function run(): Promise<void> {
 		// Use @actions/github's getOctokit for standardized GitHub client
 		const octokit = getOctokit(token);
 
-		// Pass PR info directly to avoid API call
-		await runLottery(octokit, config, {
-			prNumber,
-			repository,
-			ref,
-			author,
+		// Create service implementations
+		const logger = new LoggerImpl();
+		const actionOutputs = new ActionOutputsImpl();
+		const githubService = new GitHubServiceImpl(octokit, { repository, ref });
+
+		// Create lottery instance with dependency injection
+		const lottery = new Lottery({
+			logger,
+			actionOutputs,
+			githubService,
+			config,
+			env: { repository, ref },
+			prInfo: { prNumber, repository, ref, author },
 		});
+
+		// Run the lottery
+		await lottery.run();
 	} catch (error: unknown) {
 		core.setFailed(error instanceof Error ? error.message : String(error));
 	}

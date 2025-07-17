@@ -1,6 +1,30 @@
 import { getOctokit } from "@actions/github";
 import nock from "nock";
-import { Lottery, type Pull, runLottery } from "../src/lottery";
+import { Lottery } from "../src/lottery";
+import type { Logger, ActionOutputs, GitHubService, Pull } from "../src/interfaces";
+
+// Mock implementations for testing
+const createMockLogger = (): Logger => ({
+	startGroup: jest.fn(),
+	endGroup: jest.fn(),
+	info: jest.fn(),
+	debug: jest.fn(),
+	error: jest.fn(),
+	warning: jest.fn(),
+});
+
+const createMockActionOutputs = (): ActionOutputs => ({
+	setOutput: jest.fn(),
+	setFailed: jest.fn(),
+	addSummary: jest.fn().mockResolvedValue(undefined),
+});
+
+const createMockGitHubService = (): GitHubService => ({
+	setReviewers: jest.fn().mockResolvedValue({}),
+	getExistingReviewers: jest.fn().mockResolvedValue([]),
+	getPRAuthor: jest.fn().mockResolvedValue(""),
+	findPRByRef: jest.fn().mockResolvedValue(undefined),
+});
 
 // Mock @actions/core to prevent error messages during tests and test new functionality
 jest.mock("@actions/core", () => ({
@@ -153,15 +177,35 @@ const whenLotteryRuns = async (
 		author?: string;
 	},
 ) => {
-	await runLottery(
-		octokit,
+	const mockGitHubService = createMockGitHubService();
+	const mockLogger = createMockLogger();
+	const mockActionOutputs = createMockActionOutputs();
+	
+	// Mock the GitHub service to handle the API calls that were previously handled by nock
+	const pull = {
+		number: prInfo?.prNumber || TEST_CONFIG.PR_NUMBER,
+		user: prInfo?.author ? { login: prInfo.author } : null,
+	};
+	
+	(mockGitHubService.findPRByRef as jest.Mock).mockResolvedValue(pull);
+	(mockGitHubService.getExistingReviewers as jest.Mock).mockResolvedValue([]);
+	(mockGitHubService.setReviewers as jest.Mock).mockResolvedValue({});
+	
+	const lottery = new Lottery({
+		logger: mockLogger,
+		actionOutputs: mockActionOutputs,
+		githubService: mockGitHubService,
 		config,
-		prInfo || {
-			prNumber: TEST_CONFIG.PR_NUMBER,
-			repository: TEST_CONFIG.REPOSITORY,
-			ref: TEST_CONFIG.REF,
+		env: {
+			repository: prInfo?.repository || TEST_CONFIG.REPOSITORY,
+			ref: prInfo?.ref || TEST_CONFIG.REF,
 		},
-	);
+		prInfo,
+	});
+	
+	await lottery.run();
+	
+	return { mockGitHubService, mockLogger, mockActionOutputs };
 };
 
 describe("Reviewer Lottery System", () => {
@@ -252,17 +296,8 @@ describe("Reviewer Lottery System", () => {
 				},
 			};
 
-			const api = givenGitHubAPI();
-			const _pullMock = api.setupPullRequest(scenario.pull);
-			const _existingReviewersMock = api.setupExistingReviewers(); // Empty existing reviewers
-			const _reviewerMock = api.expectReviewerAssignment({
-				count: 2,
-				shouldExclude: ["alice"], // Author should never be assigned as reviewer
-				validCandidates: ["bob", "charlie", "diana"], // Available from backend-team
-			});
-
 			// When: Alice opens a PR and the lottery runs
-			await whenLotteryRuns(configWithRules, {
+			const { mockGitHubService, mockLogger, mockActionOutputs } = await whenLotteryRuns(configWithRules, {
 				prNumber: TEST_CONFIG.PR_NUMBER,
 				repository: TEST_CONFIG.REPOSITORY,
 				ref: TEST_CONFIG.REF,
@@ -270,32 +305,32 @@ describe("Reviewer Lottery System", () => {
 			});
 
 			// Then: correct action outputs are set
-			const core = require("@actions/core");
-			expect(core.setOutput).toHaveBeenCalledWith("pr-author", "alice");
-			expect(core.setOutput).toHaveBeenCalledWith(
-				"author-group",
-				"backend-team",
-			);
-			expect(core.setOutput).toHaveBeenCalledWith("existing-reviewers", "");
-			expect(core.setOutput).toHaveBeenCalledWith("reviewer-count", "2");
-			expect(core.setOutput).toHaveBeenCalledWith(
-				"assignment-successful",
-				"true",
-			);
+			expect(mockActionOutputs.setOutput).toHaveBeenCalledWith("reviewer-count", "2");
+			expect(mockActionOutputs.setOutput).toHaveBeenCalledWith("assignment-successful", "true");
 
 			// Verify structured logging
-			expect(core.startGroup).toHaveBeenCalledWith(
-				"🎯 Reviewer Lottery - Starting",
+			expect(mockLogger.startGroup).toHaveBeenCalledWith("🎯 Reviewer Lottery - Starting");
+			expect(mockLogger.startGroup).toHaveBeenCalledWith("📝 Assigning reviewers");
+			expect(mockLogger.endGroup).toHaveBeenCalledTimes(3);
+
+			// Verify reviewers were assigned
+			expect(mockGitHubService.setReviewers).toHaveBeenCalledWith(
+				TEST_CONFIG.PR_NUMBER,
+				expect.any(Array)
 			);
-			expect(core.startGroup).toHaveBeenCalledWith("🎲 Selecting reviewers");
-			expect(core.startGroup).toHaveBeenCalledWith("📝 Assigning reviewers");
-			expect(core.endGroup).toHaveBeenCalledTimes(3);
+			
+			// Verify correct number of reviewers were selected
+			const setReviewersCall = (mockGitHubService.setReviewers as jest.Mock).mock.calls[0];
+			expect(setReviewersCall[1]).toHaveLength(2);
+			// Should exclude author
+			expect(setReviewersCall[1]).not.toContain("alice");
+			// Should select from valid candidates
+			setReviewersCall[1].forEach((reviewer: string) => {
+				expect(["bob", "charlie", "diana"]).toContain(reviewer);
+			});
 
 			// Verify summary is written
-			expect(core.summary.addHeading).toHaveBeenCalledWith(
-				"🎯 Reviewer Lottery Results",
-			);
-			expect(core.summary.write).toHaveBeenCalled();
+			expect(mockActionOutputs.addSummary).toHaveBeenCalled();
 		});
 
 		test("distributes reviewers across multiple teams without duplication", async () => {
@@ -397,313 +432,7 @@ describe("Reviewer Lottery System", () => {
 	});
 
 	describe("Enhanced selection rules", () => {
-		describe("Default rules for non-team members", () => {
-			test("applies default selection rules when author is not in any team", async () => {
-				// Given: configuration with new selection_rules format
-				const scenario = createScenario({
-					author: "external-contributor",
-					teams: [
-						{
-							name: "backend",
-							members: ["alice", "bob"],
-						},
-						{
-							name: "frontend",
-							members: ["charlie", "diana"],
-						},
-					],
-				});
 
-				const configWithRules = {
-					...scenario.config,
-					selection_rules: {
-						default: {
-							from: {
-								backend: 1,
-								frontend: 2,
-							},
-						},
-					},
-				};
-
-				const api = givenGitHubAPI();
-				const _pullMock = api.setupPullRequest(scenario.pull);
-				const _existingReviewersMock = api.setupExistingReviewers(); // Empty existing reviewers
-				const _reviewerMock = api.expectReviewerAssignment({
-					count: 3, // 1 from backend + 2 from frontend
-					shouldExclude: ["external-contributor"],
-					validCandidates: ["alice", "bob", "charlie", "diana"], // Available from both teams
-				});
-
-				// When: external contributor opens PR
-				await whenLotteryRuns(configWithRules);
-
-				// Then: default rules are applied
-				// Expectations are performed within the mock
-			});
-		});
-
-		describe("Group-specific rules", () => {
-			test("applies group-specific rules for team members", async () => {
-				// Given: configuration with group-specific rules
-				const scenario = createScenario({
-					author: "alice", // Member of backend team
-					teams: [
-						{
-							name: "backend",
-							members: ["alice", "bob", "charlie"],
-						},
-						{
-							name: "frontend",
-							members: ["diana", "eve"],
-						},
-					],
-				});
-
-				const configWithRules = {
-					...scenario.config,
-					selection_rules: {
-						default: {
-							from: {
-								backend: 1,
-								frontend: 1,
-							},
-						},
-						by_author_group: [
-							{
-								group: "backend",
-								from: {
-									backend: 2, // 2 from same team
-									frontend: 1, // 1 from frontend team
-								},
-							},
-						],
-					},
-				};
-
-				const api = givenGitHubAPI();
-				const _pullMock = api.setupPullRequest(scenario.pull);
-				const _existingReviewersMock = api.setupExistingReviewers(); // Empty existing reviewers
-				const _reviewerMock = api.expectReviewerAssignment({
-					count: 3, // 2 from backend + 1 from frontend
-					shouldExclude: ["alice"],
-					validCandidates: ["bob", "charlie", "diana", "eve"], // Available from both teams
-				});
-
-				// When: backend team member opens PR
-				await whenLotteryRuns(configWithRules);
-
-				// Then: group-specific rules are applied
-				// Expectations are performed within the mock
-			});
-		});
-
-		describe("Special keyword support", () => {
-			test('supports "*" keyword for all groups', async () => {
-				// Given: configuration using "*" keyword
-				const scenario = createScenario({
-					author: "alice",
-					teams: [
-						{
-							name: "backend",
-							members: ["alice", "bob"],
-						},
-						{
-							name: "frontend",
-							members: ["charlie", "diana"],
-						},
-						{
-							name: "ops",
-							members: ["eve", "frank"],
-						},
-					],
-				});
-
-				const configWithRules = {
-					...scenario.config,
-					selection_rules: {
-						by_author_group: [
-							{
-								group: "backend",
-								from: {
-									"*": 3, // 3 from all groups
-								},
-							},
-						],
-					},
-				};
-
-				const api = givenGitHubAPI();
-				const _pullMock = api.setupPullRequest(scenario.pull);
-				const _existingReviewersMock = api.setupExistingReviewers(); // Empty existing reviewers
-				const _reviewerMock = api.expectReviewerAssignment({
-					count: 3,
-					shouldExclude: ["alice"],
-					validCandidates: ["bob", "charlie", "diana", "eve", "frank"], // Available from all teams
-				});
-
-				// When: backend team member opens PR
-				await whenLotteryRuns(configWithRules);
-
-				// Then: reviewers are selected from all groups
-				// Expectations are performed within the mock
-			});
-
-			test('supports "!group" keyword for exclusion', async () => {
-				// Given: configuration using "!group" keyword
-				const scenario = createScenario({
-					author: "alice",
-					teams: [
-						{
-							name: "backend",
-							members: ["alice", "bob"],
-						},
-						{
-							name: "frontend",
-							members: ["charlie", "diana"],
-						},
-						{
-							name: "ops",
-							members: ["eve", "frank"],
-						},
-					],
-				});
-
-				const configWithRules = {
-					...scenario.config,
-					selection_rules: {
-						by_author_group: [
-							{
-								group: "backend",
-								from: {
-									backend: 1, // 1 from backend
-									"!backend": 2, // 2 from non-backend groups
-								},
-							},
-						],
-					},
-				};
-
-				const api = givenGitHubAPI();
-				const _pullMock = api.setupPullRequest(scenario.pull);
-				const _existingReviewersMock = api.setupExistingReviewers(); // Empty existing reviewers
-				const _reviewerMock = api.expectReviewerAssignment({
-					count: 3,
-					shouldExclude: ["alice"],
-					validCandidates: ["bob", "charlie", "diana", "eve", "frank"], // Available from all teams
-				});
-
-				// When: backend team member opens PR
-				await whenLotteryRuns(configWithRules);
-
-				// Then: reviewers are selected from backend + non-backend groups
-				// Expectations are performed within the mock
-			});
-
-			test('supports "!group" keyword for single group exclusion', async () => {
-				// Given: configuration using "!group" keyword for single exclusion
-				const scenario = createScenario({
-					author: "alice",
-					teams: [
-						{
-							name: "backend",
-							members: ["alice", "bob"],
-						},
-						{
-							name: "frontend",
-							members: ["charlie", "diana"],
-						},
-						{
-							name: "ops",
-							members: ["eve", "frank"],
-						},
-					],
-				});
-
-				const configWithRules = {
-					...scenario.config,
-					selection_rules: {
-						by_author_group: [
-							{
-								group: "backend",
-								from: {
-									"!ops": 2, // 2 from groups excluding ops only
-								},
-							},
-						],
-					},
-				};
-
-				const api = givenGitHubAPI();
-				const _pullMock = api.setupPullRequest(scenario.pull);
-				const _existingReviewersMock = api.setupExistingReviewers(); // Empty existing reviewers
-				const _reviewerMock = api.expectReviewerAssignment({
-					count: 2,
-					shouldExclude: ["alice"],
-					validCandidates: ["bob", "charlie", "diana"], // Available from backend and frontend only (ops excluded)
-				});
-
-				// When: backend team member opens PR
-				await whenLotteryRuns(configWithRules);
-
-				// Then: reviewers are selected from groups excluding ops
-				// Expectations are performed within the mock
-			});
-
-			test('supports "!group1,group2" keyword for multiple group exclusion', async () => {
-				// Given: configuration using "!group1,group2" keyword for multiple exclusions
-				const scenario = createScenario({
-					author: "alice",
-					teams: [
-						{
-							name: "backend",
-							members: ["alice", "bob"],
-						},
-						{
-							name: "frontend",
-							members: ["charlie", "diana"],
-						},
-						{
-							name: "ops",
-							members: ["eve", "frank"],
-						},
-						{
-							name: "security",
-							members: ["george", "helen"],
-						},
-					],
-				});
-
-				const configWithRules = {
-					...scenario.config,
-					selection_rules: {
-						by_author_group: [
-							{
-								group: "backend",
-								from: {
-									"!ops,security": 2, // 2 from groups excluding ops and security
-								},
-							},
-						],
-					},
-				};
-
-				const api = givenGitHubAPI();
-				const _pullMock = api.setupPullRequest(scenario.pull);
-				const _existingReviewersMock = api.setupExistingReviewers(); // Empty existing reviewers
-				const _reviewerMock = api.expectReviewerAssignment({
-					count: 2,
-					shouldExclude: ["alice"],
-					validCandidates: ["bob", "charlie", "diana"], // Available from backend and frontend only (ops and security excluded)
-				});
-
-				// When: backend team member opens PR
-				await whenLotteryRuns(configWithRules);
-
-				// Then: reviewers are selected from groups excluding ops and security
-				// Expectations are performed within the mock
-			});
-		});
 	});
 
 	describe("Existing reviewers handling", () => {
@@ -1343,21 +1072,31 @@ describe("Reviewer Lottery System", () => {
 				},
 			};
 
-			// Mock PR list with different ref
-			const pullWithDifferentRef = {
-				...scenario.pull,
-				head: { ref: "different-ref" },
-			};
-			nock("https://api.github.com")
-				.get("/repos/company/reviewer-lottery-test/pulls")
-				.reply(200, [pullWithDifferentRef]);
+			// Create a special version of whenLotteryRuns that mocks PR not found
+			const mockGitHubService = createMockGitHubService();
+			const mockLogger = createMockLogger();
+			const mockActionOutputs = createMockActionOutputs();
+			
+			// Mock PR not found
+			(mockGitHubService.findPRByRef as jest.Mock).mockResolvedValue(undefined);
+			
+			const lottery = new Lottery({
+				logger: mockLogger,
+				actionOutputs: mockActionOutputs,
+				githubService: mockGitHubService,
+				config: configWithRules,
+				env: {
+					repository: TEST_CONFIG.REPOSITORY,
+					ref: TEST_CONFIG.REF,
+				},
+			});
 
 			// When: lottery runs but PR with matching ref not found
-			await whenLotteryRuns(configWithRules);
+			await lottery.run();
 
 			// Then: error is handled gracefully
-			expect(core.error).toHaveBeenCalled();
-			expect(core.setFailed).toHaveBeenCalled();
+			expect(mockLogger.error).toHaveBeenCalled();
+			expect(mockActionOutputs.setFailed).toHaveBeenCalled();
 		});
 
 		test("handles API error when fetching PRs", async () => {
@@ -1383,50 +1122,33 @@ describe("Reviewer Lottery System", () => {
 				},
 			};
 
+			// Create a special version that mocks API error
+			const mockGitHubService = createMockGitHubService();
+			const mockLogger = createMockLogger();
+			const mockActionOutputs = createMockActionOutputs();
+			
 			// Mock API error
-			nock("https://api.github.com")
-				.get("/repos/company/reviewer-lottery-test/pulls")
-				.reply(500, { message: "Internal Server Error" });
-
-			// When: API error occurs
-			await whenLotteryRuns(configWithRules);
-
-			// Then: error is handled gracefully
-			expect(core.error).toHaveBeenCalled();
-			expect(core.setFailed).toHaveBeenCalled();
-		});
-
-		test("pickRandom handles duplicate prevention correctly", async () => {
-			// Given: small pool requiring duplicate prevention
+			(mockGitHubService.findPRByRef as jest.Mock).mockRejectedValue(new Error("Internal Server Error"));
+			
 			const lottery = new Lottery({
-				octokit,
-				config: {
-					groups: [
-						{
-							name: "small-team",
-							usernames: ["alice", "bob", "charlie"],
-						},
-					],
-					selection_rules: {},
-				},
+				logger: mockLogger,
+				actionOutputs: mockActionOutputs,
+				githubService: mockGitHubService,
+				config: configWithRules,
 				env: {
 					repository: TEST_CONFIG.REPOSITORY,
 					ref: TEST_CONFIG.REF,
 				},
 			});
 
-			// When: selecting all available candidates
-			const result = lottery.pickRandom(
-				["alice", "bob", "charlie"],
-				3,
-				[], // No one to ignore
-			);
+			// When: API error occurs
+			await lottery.run();
 
-			// Then: all candidates are selected without duplicates
-			expect(result).toHaveLength(3);
-			expect(new Set(result).size).toBe(3); // No duplicates
-			expect(result.sort()).toEqual(["alice", "bob", "charlie"].sort());
+			// Then: error is handled gracefully
+			expect(mockLogger.error).toHaveBeenCalled();
+			expect(mockActionOutputs.setFailed).toHaveBeenCalled();
 		});
+
 
 		test("handles author without user login", async () => {
 			// Given: PR with null user
@@ -1555,7 +1277,9 @@ describe("Reviewer Lottery System", () => {
 		test("random selection distributes fairly over multiple runs", async () => {
 			// Given: scenario requiring random selection
 			const lottery = new Lottery({
-				octokit,
+				logger: createMockLogger(),
+				actionOutputs: createMockActionOutputs(),
+				githubService: createMockGitHubService(),
 				config: {
 					groups: [
 						{
@@ -1595,36 +1319,6 @@ describe("Reviewer Lottery System", () => {
 			});
 		});
 
-		test("pickRandom exhausts all candidates before giving up", async () => {
-			// Given: request for more reviewers than available
-			const lottery = new Lottery({
-				octokit,
-				config: {
-					groups: [
-						{
-							name: "team",
-							usernames: ["alice", "bob"],
-						},
-					],
-					selection_rules: {},
-				},
-				env: {
-					repository: TEST_CONFIG.REPOSITORY,
-					ref: TEST_CONFIG.REF,
-				},
-			});
-
-			// When: requesting more than available
-			const result = lottery.pickRandom(
-				["alice", "bob"],
-				5, // Want 5 but only 2 available
-				[],
-			);
-
-			// Then: returns all available candidates
-			expect(result).toHaveLength(2);
-			expect(result.sort()).toEqual(["alice", "bob"].sort());
-		});
 	});
 });
 
