@@ -1,4 +1,5 @@
 import type { Config } from "./config";
+import { ReviewerSelector } from "./core/reviewer-selector";
 import type {
 	ActionOutputs,
 	Env,
@@ -12,10 +13,16 @@ export class Lottery {
 	private logger: Logger;
 	private actionOutputs: ActionOutputs;
 	private githubService: GitHubService;
+	private reviewerSelector: ReviewerSelector;
 	config: Config;
 	env: Env;
 	pr: Pull | undefined | null;
 	prInfo?: PRInfo;
+
+	// For testing purposes - access to reviewer selector
+	get reviewerSelectorForTesting(): ReviewerSelector {
+		return this.reviewerSelector;
+	}
 
 	constructor({
 		logger,
@@ -35,6 +42,7 @@ export class Lottery {
 		this.logger = logger;
 		this.actionOutputs = actionOutputs;
 		this.githubService = githubService;
+		this.reviewerSelector = new ReviewerSelector(config);
 		this.config = config;
 		this.env = {
 			repository: env.repository,
@@ -153,10 +161,14 @@ export class Lottery {
 
 		try {
 			if (this.config.selection_rules) {
-				const authorGroup = this.getAuthorGroup(author);
+				const authorGroup = this.reviewerSelector.getAuthorGroup(author);
 				this.logger.info(`Author group: ${authorGroup || "none"}`);
 
-				const result = this.selectReviewersWithRules(author, existingReviewers);
+				// Use the ReviewerSelector for core logic
+				const selectionResult = this.reviewerSelector.selectReviewers(
+					author,
+					existingReviewers,
+				);
 
 				// Set output for applied rule info
 				this.actionOutputs.setOutput("pr-author", author);
@@ -166,9 +178,16 @@ export class Lottery {
 					existingReviewers.join(","),
 				);
 
-				this.logger.debug(`Selection result: ${result.join(", ")}`);
+				// Log the selection process
+				for (const step of selectionResult.process) {
+					this.logger.debug(`Step ${step.step}: ${step.description}`);
+				}
+
+				this.logger.debug(
+					`Selection result: ${selectionResult.selectedReviewers.join(", ")}`,
+				);
 				this.logger.endGroup();
-				return result;
+				return selectionResult.selectedReviewers;
 			}
 
 			this.logger.info("No selection rules configured");
@@ -184,120 +203,9 @@ export class Lottery {
 		}
 	}
 
-	private selectReviewersWithRules(
-		author: string,
-		existingReviewers: string[],
-	): string[] {
-		const authorGroup = this.getAuthorGroup(author);
-		const rules = this.config.selection_rules;
-
-		if (!rules) {
-			return [];
-		}
-
-		// Find applicable rule for author's group
-		const applicableRule = rules.by_author_group?.find(
-			(rule) => rule.group === authorGroup,
-		);
-
-		// Determine which rule to use based on author's group membership
-		let fromClause: Record<string, number> | undefined;
-
-		if (authorGroup === null) {
-			// Author is not in any group
-			fromClause = rules.non_group_members?.from || rules.default?.from;
-		} else {
-			// Author is in a group
-			fromClause = applicableRule?.from || rules.default?.from;
-		}
-
-		if (!fromClause) {
-			return [];
-		}
-
-		return this.selectFromMultipleGroups(
-			fromClause,
-			author,
-			authorGroup,
-			existingReviewers,
-		);
-	}
-
-	private selectFromMultipleGroups(
-		fromClause: Record<string, number>,
-		author: string,
-		authorGroup: string | null,
-		existingReviewers: string[],
-	): string[] {
-		let selected: string[] = [];
-
-		for (const [groupKey, count] of Object.entries(fromClause)) {
-			if (count <= 0) continue;
-
-			const targetGroups = this.resolveGroupSelection(groupKey, authorGroup);
-			const candidates = this.getCandidatesFromGroups(targetGroups);
-
-			// Count existing reviewers from the target groups
-			const existingFromGroups = existingReviewers.filter((reviewer) =>
-				candidates.includes(reviewer),
-			);
-
-			// Calculate how many more reviewers we need from this group
-			const remainingNeeded = Math.max(0, count - existingFromGroups.length);
-
-			if (remainingNeeded > 0) {
-				const picks = this.pickRandom(
-					candidates,
-					remainingNeeded,
-					selected.concat(author, ...existingReviewers),
-				);
-				selected = selected.concat(picks);
-			}
-		}
-
-		return selected;
-	}
-
-	private resolveGroupSelection(
-		groupKey: string,
-		_authorGroup: string | null,
-	): string[] {
-		if (groupKey === "*") {
-			// All groups
-			return this.config.groups.map((g) => g.name);
-		}
-
-		if (groupKey.startsWith("!")) {
-			// Exclude specific group(s) - support comma-separated list
-			const excludeGroups = groupKey
-				.substring(1)
-				.split(",")
-				.map((g) => g.trim());
-			return this.config.groups
-				.map((g) => g.name)
-				.filter((name) => !excludeGroups.includes(name));
-		}
-
-		// Specific group
-		return [groupKey];
-	}
-
-	private getCandidatesFromGroups(groupNames: string[]): string[] {
-		const candidates: string[] = [];
-
-		for (const groupName of groupNames) {
-			const group = this.config.groups.find((g) => g.name === groupName);
-			if (group) {
-				candidates.push(...group.usernames);
-			}
-		}
-
-		return candidates;
-	}
-
 	private async addSuccessSummary(reviewers: string[]): Promise<void> {
 		const author = await this.getPRAuthor();
-		const authorGroup = this.getAuthorGroup(author);
+		const authorGroup = this.reviewerSelector.getAuthorGroup(author);
 		const existingReviewers = await this.getExistingReviewers();
 
 		await this.actionOutputs.addSummary("🎯 Reviewer Lottery Results", [
@@ -315,7 +223,7 @@ export class Lottery {
 
 	private async addNoReviewersSummary(): Promise<void> {
 		const author = await this.getPRAuthor();
-		const authorGroup = this.getAuthorGroup(author);
+		const authorGroup = this.reviewerSelector.getAuthorGroup(author);
 		const existingReviewers = await this.getExistingReviewers();
 
 		await this.actionOutputs.addSummary("🎯 Reviewer Lottery Results", [
@@ -329,21 +237,6 @@ export class Lottery {
 			["Total Reviewers", "0"],
 			["Status", "⚠️ No reviewers selected"],
 		]);
-	}
-
-	pickRandom(items: string[], n: number, ignore: string[]): string[] {
-		const picks: string[] = [];
-
-		const candidates = items.filter((item) => !ignore.includes(item));
-
-		while (picks.length < n && candidates.length > 0) {
-			const random = Math.floor(Math.random() * candidates.length);
-			const pick = candidates.splice(random, 1)[0];
-
-			if (!picks.includes(pick)) picks.push(pick);
-		}
-
-		return picks;
 	}
 
 	async getPRAuthor(): Promise<string> {
@@ -389,15 +282,6 @@ export class Lottery {
 
 	getPRNumber(): number {
 		return Number(this.pr?.number);
-	}
-
-	getAuthorGroup(author: string): string | null {
-		for (const group of this.config.groups) {
-			if (group.usernames.includes(author)) {
-				return group.name;
-			}
-		}
-		return null;
 	}
 
 	async getPR(): Promise<Pull | undefined> {

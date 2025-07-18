@@ -1,21 +1,5 @@
 import { Lottery } from "../../src/lottery";
 
-// Type for accessing private methods in tests
-type LotteryWithPrivateAccess = {
-	resolveGroupSelection(groupKey: string, authorGroup: string | null): string[];
-	getCandidatesFromGroups(groupNames: string[]): string[];
-	selectReviewersWithRules(
-		author: string,
-		existingReviewers: string[],
-	): string[];
-	selectFromMultipleGroups(
-		fromClause: Record<string, number>,
-		author: string,
-		authorGroup: string | null,
-		existingReviewers: string[],
-	): string[];
-};
-
 import {
 	createMockActionOutputs,
 	createMockGitHubService,
@@ -122,7 +106,11 @@ describe("Lottery Business Logic", () => {
 		pickRandomTestCases.forEach(
 			({ name, items, count, ignore, expectedLength, validator }) => {
 				test(name, () => {
-					const result = lottery.pickRandom(items, count, ignore);
+					const result = lottery.reviewerSelectorForTesting.pickRandom(
+						items,
+						count,
+						ignore,
+					);
 
 					expect(result).toHaveLength(expectedLength);
 					if (validator) {
@@ -202,7 +190,9 @@ describe("Lottery Business Logic", () => {
 
 		getAuthorGroupTestCases.forEach(({ name, author, expected }) => {
 			test(name, () => {
-				expect(lottery.getAuthorGroup(author)).toBe(expected);
+				expect(lottery.reviewerSelectorForTesting.getAuthorGroup(author)).toBe(
+					expected,
+				);
 			});
 		});
 
@@ -230,7 +220,9 @@ describe("Lottery Business Logic", () => {
 				},
 			});
 
-			expect(lotteryWithOverlap.getAuthorGroup("alice")).toBe("backend");
+			expect(
+				lotteryWithOverlap.reviewerSelectorForTesting.getAuthorGroup("alice"),
+			).toBe("backend");
 		});
 
 		test("handles empty groups", () => {
@@ -248,7 +240,11 @@ describe("Lottery Business Logic", () => {
 				},
 			});
 
-			expect(lotteryWithEmptyGroups.getAuthorGroup("alice")).toBeNull();
+			expect(
+				lotteryWithEmptyGroups.reviewerSelectorForTesting.getAuthorGroup(
+					"alice",
+				),
+			).toBeNull();
 		});
 	});
 
@@ -333,57 +329,64 @@ describe("Lottery Business Logic", () => {
 		});
 
 		test("returns all groups for wildcard '*'", () => {
-			const result = (
-				lottery as unknown as LotteryWithPrivateAccess
-			).resolveGroupSelection("*", null);
+			const result = lottery.reviewerSelectorForTesting.resolveGroupSelection(
+				"*",
+				null,
+			);
 
 			expect(result).toEqual(["backend", "frontend", "ops"]);
 		});
 
 		test("returns specific group for group name", () => {
-			const result = (
-				lottery as unknown as LotteryWithPrivateAccess
-			).resolveGroupSelection("backend", null);
+			const result = lottery.reviewerSelectorForTesting.resolveGroupSelection(
+				"backend",
+				null,
+			);
 
 			expect(result).toEqual(["backend"]);
 		});
 
 		test("excludes single group with '!' prefix", () => {
-			const result = (
-				lottery as unknown as LotteryWithPrivateAccess
-			).resolveGroupSelection("!backend", null);
+			const result = lottery.reviewerSelectorForTesting.resolveGroupSelection(
+				"!backend",
+				null,
+			);
 
 			expect(result).toEqual(["frontend", "ops"]);
 		});
 
 		test("excludes multiple groups with '!' prefix and comma separation", () => {
-			const result = (
-				lottery as unknown as LotteryWithPrivateAccess
-			).resolveGroupSelection("!backend,frontend", null);
+			const result = lottery.reviewerSelectorForTesting.resolveGroupSelection(
+				"!backend,frontend",
+				null,
+			);
 
 			expect(result).toEqual(["ops"]);
 		});
 
 		test("handles whitespace in exclusion list", () => {
-			const result = (
-				lottery as unknown as LotteryWithPrivateAccess
-			).resolveGroupSelection("!backend, frontend", null);
+			const result = lottery.reviewerSelectorForTesting.resolveGroupSelection(
+				"!backend, frontend",
+				null,
+			);
 
 			expect(result).toEqual(["ops"]);
 		});
 
 		test("returns empty array when excluding all groups", () => {
-			const result = (
-				lottery as unknown as LotteryWithPrivateAccess
-			).resolveGroupSelection("!backend,frontend,ops", null);
+			const result = lottery.reviewerSelectorForTesting.resolveGroupSelection(
+				"!backend,frontend,ops",
+				null,
+			);
 
 			expect(result).toEqual([]);
 		});
 
 		test("returns empty array for non-existent group", () => {
-			const result = (
-				lottery as unknown as LotteryWithPrivateAccess
-			).resolveGroupSelection("nonexistent", null);
+			const result = lottery.reviewerSelectorForTesting.resolveGroupSelection(
+				"nonexistent",
+				null,
+			);
 
 			expect(result).toEqual(["nonexistent"]);
 		});
@@ -422,41 +425,41 @@ describe("Lottery Business Logic", () => {
 		});
 
 		test("returns candidates from single group", () => {
-			const result = (
-				lottery as unknown as LotteryWithPrivateAccess
-			).getCandidatesFromGroups(["backend"]);
+			const result = lottery.reviewerSelectorForTesting.getCandidatesFromGroups(
+				["backend"],
+			);
 
 			expect(result).toEqual(["alice", "bob"]);
 		});
 
 		test("returns candidates from multiple groups", () => {
-			const result = (
-				lottery as unknown as LotteryWithPrivateAccess
-			).getCandidatesFromGroups(["backend", "frontend"]);
+			const result = lottery.reviewerSelectorForTesting.getCandidatesFromGroups(
+				["backend", "frontend"],
+			);
 
 			expect(result).toEqual(["alice", "bob", "charlie", "diana"]);
 		});
 
 		test("returns empty array for non-existent group", () => {
-			const result = (
-				lottery as unknown as LotteryWithPrivateAccess
-			).getCandidatesFromGroups(["nonexistent"]);
+			const result = lottery.reviewerSelectorForTesting.getCandidatesFromGroups(
+				["nonexistent"],
+			);
 
 			expect(result).toEqual([]);
 		});
 
 		test("handles empty groups array", () => {
-			const result = (
-				lottery as unknown as LotteryWithPrivateAccess
-			).getCandidatesFromGroups([]);
+			const result = lottery.reviewerSelectorForTesting.getCandidatesFromGroups(
+				[],
+			);
 
 			expect(result).toEqual([]);
 		});
 
 		test("handles mix of existing and non-existing groups", () => {
-			const result = (
-				lottery as unknown as LotteryWithPrivateAccess
-			).getCandidatesFromGroups(["backend", "nonexistent", "ops"]);
+			const result = lottery.reviewerSelectorForTesting.getCandidatesFromGroups(
+				["backend", "nonexistent", "ops"],
+			);
 
 			expect(result).toEqual(["alice", "bob", "eve"]);
 		});
@@ -513,9 +516,11 @@ describe("Lottery Business Logic", () => {
 		});
 
 		test("uses group-specific rules when author is in group", () => {
-			const result = (
-				lottery as unknown as LotteryWithPrivateAccess
-			).selectReviewersWithRules("alice", []);
+			const result =
+				lottery.reviewerSelectorForTesting.selectReviewersWithRules(
+					"alice",
+					[],
+				);
 
 			// Should use backend group rule: 2 from backend + 1 from frontend
 			expect(result).toHaveLength(3);
@@ -524,9 +529,11 @@ describe("Lottery Business Logic", () => {
 		});
 
 		test("uses non-group-members rule when author is not in any group", () => {
-			const result = (
-				lottery as unknown as LotteryWithPrivateAccess
-			).selectReviewersWithRules("external", []);
+			const result =
+				lottery.reviewerSelectorForTesting.selectReviewersWithRules(
+					"external",
+					[],
+				);
 
 			// Should use non_group_members rule: 1 from backend + 2 from frontend
 			expect(result).toHaveLength(3);
@@ -565,9 +572,11 @@ describe("Lottery Business Logic", () => {
 				},
 			});
 
-			const result = (
-				lotteryWithoutSpecificRule as unknown as LotteryWithPrivateAccess
-			).selectReviewersWithRules("alice", []);
+			const result =
+				lotteryWithoutSpecificRule.reviewerSelectorForTesting.selectReviewersWithRules(
+					"alice",
+					[],
+				);
 
 			// Should use default rule: 1 from backend + 1 from frontend
 			expect(result).toHaveLength(2);
@@ -576,9 +585,11 @@ describe("Lottery Business Logic", () => {
 
 		test("considers existing reviewers in selection", () => {
 			const existingReviewers = ["bob", "diana"];
-			const result = (
-				lottery as unknown as LotteryWithPrivateAccess
-			).selectReviewersWithRules("alice", existingReviewers);
+			const result =
+				lottery.reviewerSelectorForTesting.selectReviewersWithRules(
+					"alice",
+					existingReviewers,
+				);
 
 			// Should use backend group rule: 2 from backend + 1 from frontend
 			// But bob (backend) and diana (frontend) are already reviewers
@@ -610,9 +621,11 @@ describe("Lottery Business Logic", () => {
 				},
 			});
 
-			const result = (
-				lotteryWithoutRules as unknown as LotteryWithPrivateAccess
-			).selectReviewersWithRules("alice", []);
+			const result =
+				lotteryWithoutRules.reviewerSelectorForTesting.selectReviewersWithRules(
+					"alice",
+					[],
+				);
 
 			expect(result).toEqual([]);
 		});
@@ -651,9 +664,13 @@ describe("Lottery Business Logic", () => {
 				backend: 2,
 				frontend: 1,
 			};
-			const result = (
-				lottery as unknown as LotteryWithPrivateAccess
-			).selectFromMultipleGroups(fromClause, "alice", "backend", []);
+			const result =
+				lottery.reviewerSelectorForTesting.selectFromMultipleGroups(
+					fromClause,
+					"alice",
+					"backend",
+					[],
+				);
 
 			expect(result).toHaveLength(3);
 			expect(result).not.toContain("alice");
@@ -664,9 +681,13 @@ describe("Lottery Business Logic", () => {
 				backend: 2,
 				frontend: 0,
 			};
-			const result = (
-				lottery as unknown as LotteryWithPrivateAccess
-			).selectFromMultipleGroups(fromClause, "alice", "backend", []);
+			const result =
+				lottery.reviewerSelectorForTesting.selectFromMultipleGroups(
+					fromClause,
+					"alice",
+					"backend",
+					[],
+				);
 
 			expect(result).toHaveLength(2);
 			expect(result).not.toContain("alice");
@@ -682,14 +703,13 @@ describe("Lottery Business Logic", () => {
 				frontend: 1,
 			};
 			const existingReviewers = ["bob", "diana"];
-			const result = (
-				lottery as unknown as LotteryWithPrivateAccess
-			).selectFromMultipleGroups(
-				fromClause,
-				"alice",
-				"backend",
-				existingReviewers,
-			);
+			const result =
+				lottery.reviewerSelectorForTesting.selectFromMultipleGroups(
+					fromClause,
+					"alice",
+					"backend",
+					existingReviewers,
+				);
 
 			// bob (backend) and diana (frontend) are already reviewers
 			// Need 1 more from backend, 0 more from frontend
@@ -701,9 +721,13 @@ describe("Lottery Business Logic", () => {
 			const fromClause = {
 				"*": 3,
 			};
-			const result = (
-				lottery as unknown as LotteryWithPrivateAccess
-			).selectFromMultipleGroups(fromClause, "alice", "backend", []);
+			const result =
+				lottery.reviewerSelectorForTesting.selectFromMultipleGroups(
+					fromClause,
+					"alice",
+					"backend",
+					[],
+				);
 
 			expect(result).toHaveLength(3);
 			expect(result).not.toContain("alice");
@@ -713,9 +737,13 @@ describe("Lottery Business Logic", () => {
 			const fromClause = {
 				"!backend": 2,
 			};
-			const result = (
-				lottery as unknown as LotteryWithPrivateAccess
-			).selectFromMultipleGroups(fromClause, "alice", "backend", []);
+			const result =
+				lottery.reviewerSelectorForTesting.selectFromMultipleGroups(
+					fromClause,
+					"alice",
+					"backend",
+					[],
+				);
 
 			expect(result).toHaveLength(2);
 			expect(result).not.toContain("alice");

@@ -1293,7 +1293,7 @@ describe("Reviewer Lottery System", () => {
 
 			// When: running selection multiple times
 			for (let i = 0; i < 100; i++) {
-				const result = lottery.pickRandom(
+				const result = lottery.reviewerSelectorForTesting.pickRandom(
 					["alice", "bob", "charlie", "diana"],
 					1,
 					[],
