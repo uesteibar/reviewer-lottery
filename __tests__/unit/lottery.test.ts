@@ -705,15 +705,25 @@ describe("Lottery Business Logic", () => {
 				},
 			});
 
-			const result = lotteryWithMultipleGroups.reviewerSelectorForTesting.selectReviewers("alice");
+			const result =
+				lotteryWithMultipleGroups.reviewerSelectorForTesting.selectReviewers(
+					"alice",
+				);
 
 			// alice is in both frontend and devops groups
 			// frontend rule: backend(2) + devops(1)
 			// devops rule: frontend(1) + backend(1)
 			// merged rule: backend(max(2,1)=2) + devops(max(1,0)=1) + frontend(max(0,1)=1)
 			expect(result.appliedRule?.type).toBe("merged_groups");
-			expect(result.appliedRule?.mergedFromGroups).toEqual(["frontend", "devops"]);
-			expect(result.appliedRule?.rule).toEqual({ backend: 2, devops: 1, frontend: 1 });
+			expect(result.appliedRule?.mergedFromGroups).toEqual([
+				"frontend",
+				"devops",
+			]);
+			expect(result.appliedRule?.rule).toEqual({
+				backend: 2,
+				devops: 1,
+				frontend: 1,
+			});
 			expect(result.selectedReviewers).toHaveLength(4); // 2 backend + 1 devops + 1 frontend
 			expect(result.selectedReviewers).not.toContain("alice");
 		});
@@ -750,13 +760,19 @@ describe("Lottery Business Logic", () => {
 				},
 			});
 
-			const result = lotteryWithDefaultFallback.reviewerSelectorForTesting.selectReviewers("alice");
+			const result =
+				lotteryWithDefaultFallback.reviewerSelectorForTesting.selectReviewers(
+					"alice",
+				);
 
 			// alice is in both frontend and devops groups
 			// No group-specific rules, so both groups use default rule
 			// merged rule: *(max(1,1)=1)
 			expect(result.appliedRule?.type).toBe("merged_groups");
-			expect(result.appliedRule?.mergedFromGroups).toEqual(["frontend", "devops"]);
+			expect(result.appliedRule?.mergedFromGroups).toEqual([
+				"frontend",
+				"devops",
+			]);
 			expect(result.appliedRule?.rule).toEqual({ "*": 1 });
 			expect(result.selectedReviewers).toHaveLength(1);
 			expect(result.selectedReviewers).not.toContain("alice");

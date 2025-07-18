@@ -85,9 +85,9 @@ export class ReviewerSelector {
 			const ruleType = rules.non_group_members?.from
 				? "non_group_members"
 				: "default";
-			
+
 			if (!fromClause) return null;
-			
+
 			return {
 				type: ruleType,
 				rule: fromClause,
@@ -98,7 +98,7 @@ export class ReviewerSelector {
 		if (authorGroups.length > 1) {
 			const mergedRule = this.mergeRulesFromGroups(authorGroups);
 			if (!mergedRule) return null;
-			
+
 			return {
 				type: "merged_groups",
 				rule: mergedRule,
@@ -113,7 +113,9 @@ export class ReviewerSelector {
 
 		const fromClause = applicableRule?.from || rules.default?.from;
 		const ruleType = applicableRule ? "by_author_group" : "default";
-		const ruleIndex = applicableRule ? rules.by_author_group?.indexOf(applicableRule) : undefined;
+		const ruleIndex = applicableRule
+			? rules.by_author_group?.indexOf(applicableRule)
+			: undefined;
 
 		if (!fromClause) return null;
 
@@ -127,20 +129,27 @@ export class ReviewerSelector {
 	/**
 	 * Merge rules from multiple groups
 	 */
-	private mergeRulesFromGroups(authorGroups: string[]): Record<string, number> | null {
+	private mergeRulesFromGroups(
+		authorGroups: string[],
+	): Record<string, number> | null {
 		const rules = this.config.selection_rules;
 		if (!rules?.by_author_group) return rules?.default?.from || null;
 
 		const mergedRule: Record<string, number> = {};
-		
+
 		for (const groupName of authorGroups) {
-			const groupRule = rules.by_author_group.find(rule => rule.group === groupName);
+			const groupRule = rules.by_author_group.find(
+				(rule) => rule.group === groupName,
+			);
 			const fromClause = groupRule?.from || rules.default?.from;
-			
+
 			if (fromClause) {
 				// Merge by taking maximum count for each target group
 				for (const [targetGroup, count] of Object.entries(fromClause)) {
-					mergedRule[targetGroup] = Math.max(mergedRule[targetGroup] || 0, count);
+					mergedRule[targetGroup] = Math.max(
+						mergedRule[targetGroup] || 0,
+						count,
+					);
 				}
 			}
 		}

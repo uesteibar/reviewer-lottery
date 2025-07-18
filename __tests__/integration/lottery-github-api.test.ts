@@ -37,7 +37,7 @@ interface TestScenario {
 		name: string;
 		members: string[];
 	}>;
-	rules?: any;
+	rules?: Record<string, unknown>;
 }
 
 const createScenario = (scenario: TestScenario) => {
@@ -202,7 +202,8 @@ describe("Reviewer Lottery System", () => {
 		// Ensure no pending interceptors
 		if (!nock.isDone()) {
 			nock.pendingMocks().forEach((mock) => {
-				console.warn("Pending mock:", mock);
+				// Log pending mock for debugging
+				process.stderr.write(`Warning: Pending mock: ${mock}\n`);
 			});
 		}
 	});
