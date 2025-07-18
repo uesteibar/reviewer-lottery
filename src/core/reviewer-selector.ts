@@ -173,7 +173,10 @@ export class ReviewerSelector {
 	 * Get the strategy for handling multiple group membership
 	 */
 	private getMultipleGroupStrategy(): MultipleGroupStrategy {
-		return this.config.when_author_in_multiple_groups || DEFAULT_MULTIPLE_GROUP_STRATEGY;
+		return (
+			this.config.when_author_in_multiple_groups ||
+			DEFAULT_MULTIPLE_GROUP_STRATEGY
+		);
 	}
 
 	/**
@@ -207,7 +210,7 @@ export class ReviewerSelector {
 	 * Handle "merge" strategy - merge rules from all groups
 	 */
 	private handleMergeStrategy(
-		rules: SelectionRules,
+		_rules: SelectionRules,
 		authorGroups: string[],
 	): AppliedRule | null {
 		const mergedRule = this.mergeRulesFromGroups(authorGroups);
