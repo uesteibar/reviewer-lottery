@@ -47,6 +47,12 @@ jobs:
         # config: 'path/to/your/config.yml'  # Optional: custom config file path
 ```
 
+## Testing Your Configuration Locally
+
+```bash
+npx tsx fan-k-tamura/reviewer-lottery/config-test
+```
+
 ## How It Works
 
 ### Basic Behavior
@@ -205,7 +211,7 @@ when_author_in_multiple_groups: merge
 groups:
   - name: backend        # alice is in backend (defined first)
     usernames: [alice, bob, charlie]
-  - name: frontend       # alice is also in frontend  
+  - name: frontend       # alice is also in frontend
     usernames: [alice, diana, eve]
   - name: ops
     usernames: [frank, grace]

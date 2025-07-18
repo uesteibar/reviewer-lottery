@@ -4,15 +4,18 @@
 	"private": true,
 	"description": "Automatically assign reviewers to Pull Requests",
 	"main": "lib/main.js",
+	"bin": {
+		"config-test": "bin/config-test.js"
+	},
 	"scripts": {
-		"build": "tsc",
+		"typecheck": "tsc --noEmit",
 		"format": "biome format --write",
 		"format-check": "biome format",
 		"lint": "biome check",
 		"lint-fix": "biome check --write",
 		"pack": "tsup",
 		"test": "jest",
-		"all": "pnpm run build && pnpm run format && pnpm run lint && pnpm run pack && pnpm test"
+		"all": "pnpm run typecheck && pnpm run format && pnpm run lint && pnpm run pack && pnpm test"
 	},
 	"repository": {
 		"type": "git",
@@ -27,7 +30,8 @@
 	"license": "MIT",
 	"dependencies": {
 		"@actions/core": "^1.9.1",
-		"@actions/github": "^6.0.1"
+		"@actions/github": "^6.0.1",
+		"chalk": "^5.4.1"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.1.1",

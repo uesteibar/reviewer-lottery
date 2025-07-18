@@ -9,6 +9,7 @@
 		"ignoreUnknown": false,
 		"includes": [
 			"**/*",
+			"!bin/**",
 			"!dist/**",
 			"!node_modules/**",
 			"!lib/**",

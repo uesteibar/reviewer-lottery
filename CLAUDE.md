@@ -6,6 +6,44 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a GitHub Action that automatically assigns reviewers to Pull Requests using a lottery system. The action reads configuration from `.github/reviewer-lottery.yml` and assigns reviewers based on flexible selection rules.
 
+## Directory Structure
+
+```
+src/
+├── main.ts                   # GitHub Action entry point
+├── lottery.ts               # Main lottery logic and orchestration
+├── config.ts                # Configuration parsing and validation
+├── interfaces.ts            # Service contracts and interfaces
+├── actions-service.ts       # GitHub Actions logging service
+├── github-service.ts        # GitHub API service implementation
+├── config-test.ts           # CLI tool for configuration testing
+├── core/
+│   └── reviewer-selector.ts # Core reviewer selection logic
+└── types/
+    └── selection-types.ts   # Selection-specific type definitions
+
+__tests__/
+├── unit/
+│   └── lottery.test.ts      # Unit tests for lottery logic
+├── integration/
+│   └── lottery-github-api.test.ts # Integration tests
+├── mocks.ts                 # Test mocks and stubs
+└── test-helpers.ts          # Test utility functions
+
+examples/
+├── sample-config.yml        # Basic configuration example
+├── advanced-selection-patterns.yml
+├── complex-group-patterns.yml
+└── organizational-hierarchy.yml
+
+bin/                         # CLI executables
+action.yml                   # GitHub Action definition
+tsconfig.json               # TypeScript configuration
+tsup.config.ts              # Build configuration
+jest.config.js              # Test configuration
+biome.json                  # Linting/formatting configuration
+```
+
 ## Core Architecture
 
 ### Main Components
@@ -16,6 +54,8 @@ This is a GitHub Action that automatically assigns reviewers to Pull Requests us
 - **src/interfaces.ts**: TypeScript interfaces for all service contracts and data structures
 - **src/actions-service.ts**: Service implementations for GitHub Actions logging and outputs
 - **src/github-service.ts**: Service implementation for GitHub API interactions
+- **src/core/reviewer-selector.ts**: Core reviewer selection logic with sophisticated rule handling
+- **src/config-test.ts**: CLI tool for testing configuration files locally
 
 ### Key Classes
 
@@ -24,6 +64,10 @@ This is a GitHub Action that automatically assigns reviewers to Pull Requests us
   - Implements complex selection rules (by author group, fallback rules, etc.)
   - Manages exclusion logic (author, existing reviewers, selected reviewers)
   - Provides comprehensive logging and GitHub Action outputs
+- **ReviewerSelector**: Core selection logic extracted from Lottery class
+  - Handles multiple group membership strategies ("merge" vs "first")
+  - Implements special selector patterns (`"*"`, `"!groupname"`)
+  - Returns detailed selection results with applied rules and process steps
 
 ### Service Layer
 
@@ -48,29 +92,35 @@ The action supports sophisticated selection rules:
 # Install dependencies
 pnpm install
 
-# Build TypeScript
-pnpm run build
+# Type checking without output
+pnpm typecheck
 
 # Run tests
 pnpm test
 
+# Run single test by pattern
+pnpm test -- --testNamePattern="test name"
+
 # Format code
-pnpm run format
+pnpm format
 
 # Check formatting
-pnpm run format-check
+pnpm format-check
 
 # Lint code
-pnpm run lint
+pnpm lint
 
 # Fix linting issues
-pnpm run lint-fix
+pnpm lint-fix
 
-# Build distribution bundle
-pnpm run pack
+# Build distribution bundle (creates dist/index.js)
+pnpm pack
 
-# Run all checks (build, format, lint, pack, test)
-pnpm run all
+# Test configuration locally
+npx tsx bin/config-test.js
+
+# Run all checks (typecheck, format, lint, pack, test)
+pnpm all
 ```
 
 ## Testing
@@ -92,6 +142,23 @@ pnpm run all
 The action expects a YAML configuration file at `.github/reviewer-lottery.yml` with:
 - `groups`: Array of team definitions with names and usernames
 - `selection_rules`: Complex rules for reviewer assignment based on author group membership
+  - `default`: Fallback rules for any author
+  - `by_author_group`: Rules specific to authors in particular groups
+  - `non_group_members`: Rules for authors not in any group
+- `when_author_in_multiple_groups`: Strategy for handling multiple group membership ("merge" or "first")
+
+### Configuration Testing
+
+Use the built-in config tester to validate your configuration:
+```bash
+npx tsx bin/config-test.js
+```
+
+This CLI tool will:
+- Load and validate your configuration
+- Generate test scenarios based on your groups
+- Show detailed selection results for each scenario
+- Provide statistics on reviewer distribution
 
 ## GitHub Action Integration
 

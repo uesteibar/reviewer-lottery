@@ -1,0 +1,59 @@
+# Basic Reviewer Lottery Configuration
+# This is a simple example showing the basic structure and common patterns
+
+groups:
+  - name: "frontend"
+    usernames:
+      - "alice-frontend"
+      - "bob-frontend"
+      - "charlie-frontend"
+      - "diana-fullstack"
+  
+  - name: "backend"
+    usernames:
+      - "eve-backend"
+      - "frank-backend"
+      - "grace-backend"
+      - "diana-fullstack"
+  
+  - name: "devops"
+    usernames:
+      - "henry-devops"
+      - "ivan-devops"
+      - "jane-sre"
+
+selection_rules:
+  # Default rule: Select 2 reviewers from any group
+  default:
+    from:
+      "*": 2
+  
+  # Rules based on author's group membership
+  by_author_group:
+    # Frontend authors get backend and devops review
+    - group: "frontend"
+      from:
+        "backend": 2     # 2 backend reviewers
+        "devops": 1      # 1 devops reviewer
+    
+    # Backend authors get frontend and devops review
+    - group: "backend"
+      from:
+        "frontend": 2    # 2 frontend reviewers
+        "devops": 1      # 1 devops reviewer
+    
+    # DevOps authors get cross-team review
+    - group: "devops"
+      from:
+        "frontend": 1    # 1 frontend reviewer
+        "backend": 1     # 1 backend reviewer
+  
+  # External contributors get comprehensive review
+  non_group_members:
+    from:
+      "frontend": 1      # 1 frontend reviewer
+      "backend": 1       # 1 backend reviewer
+      "devops": 1        # 1 devops reviewer
+
+# Strategy for handling multiple group membership
+when_author_in_multiple_groups: "merge"

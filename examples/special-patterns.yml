@@ -1,0 +1,81 @@
+# Special Patterns Configuration
+# This example demonstrates advanced selection patterns and edge cases
+
+groups:
+  - name: "senior-engineers"
+    usernames:
+      - "alice-senior"
+      - "bob-senior"
+      - "charlie-senior"
+
+  - name: "junior-engineers"
+    usernames:
+      - "dana-junior"
+      - "eve-junior"
+      - "frank-junior"
+
+  - name: "architects"
+    usernames:
+      - "grace-architect"
+      - "henry-architect"
+
+  - name: "security-team"
+    usernames:
+      - "iris-security"
+      - "jack-security"
+
+  - name: "qa-team"
+    usernames:
+      - "kelly-qa"
+      - "liam-qa"
+      - "maya-qa"
+
+selection_rules:
+  # Default: Select from all groups using wildcard
+  default:
+    from:
+      "*": 2
+
+  by_author_group:
+    # Senior engineers: exclude junior engineers, include architects
+    - group: "senior-engineers"
+      from:
+        "!junior-engineers": 2  # Exclude junior engineers
+        "architects": 1         # Always include architect
+
+    # Junior engineers: senior mentorship required
+    - group: "junior-engineers"
+      from:
+        "senior-engineers": 2   # 2 senior engineers for mentorship
+        "architects": 1         # 1 architect for guidance
+
+    # Architects: broad team review
+    - group: "architects"
+      from:
+        "senior-engineers": 1   # 1 senior engineer
+        "junior-engineers": 1   # 1 junior engineer
+        "security-team": 1      # 1 security reviewer
+
+    # Security team: specialized review patterns
+    - group: "security-team"
+      from:
+        "architects": 1         # 1 architect for system design
+        "senior-engineers": 1   # 1 senior engineer
+        "qa-team": 1           # 1 QA for testing perspective
+
+    # QA team: development and security perspective
+    - group: "qa-team"
+      from:
+        "senior-engineers": 1   # 1 senior engineer
+        "security-team": 1      # 1 security reviewer
+
+  # External contributors: comprehensive review
+  non_group_members:
+    from:
+      "architects": 1           # 1 architect for design review
+      "senior-engineers": 1     # 1 senior engineer for code review
+      "security-team": 1        # 1 security reviewer
+      "qa-team": 1             # 1 QA for testing
+
+# Use "first" strategy for multiple group membership
+when_author_in_multiple_groups: "first"
