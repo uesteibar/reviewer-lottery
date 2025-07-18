@@ -1,48 +1,48 @@
-import * as core from "@actions/core";
-import type { getOctokit } from "@actions/github";
 import type { Config } from "./config";
-
-type Octokit = ReturnType<typeof getOctokit>;
-
-export interface Pull {
-	user: { login: string } | null;
-	number: number;
-}
-
-interface Env {
-	repository: string;
-	ref: string;
-}
+import { ReviewerSelector } from "./core/reviewer-selector";
+import type {
+	ActionOutputs,
+	Env,
+	GitHubService,
+	Logger,
+	PRInfo,
+	Pull,
+} from "./interfaces";
 
 export class Lottery {
-	octokit: Octokit;
+	private logger: Logger;
+	private actionOutputs: ActionOutputs;
+	private githubService: GitHubService;
+	private reviewerSelector: ReviewerSelector;
 	config: Config;
 	env: Env;
 	pr: Pull | undefined | null;
-	prInfo?: {
-		prNumber: number;
-		repository: string;
-		ref: string;
-		author?: string;
-	};
+	prInfo?: PRInfo;
+
+	// For testing purposes - access to reviewer selector
+	get reviewerSelectorForTesting(): ReviewerSelector {
+		return this.reviewerSelector;
+	}
 
 	constructor({
-		octokit,
+		logger,
+		actionOutputs,
+		githubService,
 		config,
 		env,
 		prInfo,
 	}: {
-		octokit: Octokit;
+		logger: Logger;
+		actionOutputs: ActionOutputs;
+		githubService: GitHubService;
 		config: Config;
 		env: Env;
-		prInfo?: {
-			prNumber: number;
-			repository: string;
-			ref: string;
-			author?: string;
-		};
+		prInfo?: PRInfo;
 	}) {
-		this.octokit = octokit;
+		this.logger = logger;
+		this.actionOutputs = actionOutputs;
+		this.githubService = githubService;
+		this.reviewerSelector = new ReviewerSelector(config);
 		this.config = config;
 		this.env = {
 			repository: env.repository,
@@ -53,61 +53,66 @@ export class Lottery {
 	}
 
 	async run(): Promise<void> {
-		core.startGroup("🎯 Reviewer Lottery - Starting");
+		this.logger.startGroup("🎯 Reviewer Lottery - Starting");
 
 		try {
-			core.debug("Checking if PR is ready for review assignment");
+			this.logger.debug("Checking if PR is ready for review assignment");
 			const ready = await this.isReadyToReview();
 
 			if (ready) {
-				core.debug("PR is ready, selecting reviewers");
+				this.logger.debug("PR is ready, selecting reviewers");
 				const reviewers = await this.selectReviewers();
 
-				core.info(
+				this.logger.info(
 					`Selected ${reviewers.length} reviewers: ${reviewers.join(", ")}`,
 				);
 
 				// Set action outputs
-				core.setOutput("reviewers", reviewers.join(","));
-				core.setOutput("reviewer-count", reviewers.length.toString());
+				this.actionOutputs.setOutput("reviewers", reviewers.join(","));
+				this.actionOutputs.setOutput(
+					"reviewer-count",
+					reviewers.length.toString(),
+				);
 
 				if (reviewers.length > 0) {
-					core.startGroup("📝 Assigning reviewers");
-					core.setOutput("assignment-successful", "true");
+					this.logger.startGroup("📝 Assigning reviewers");
+					this.actionOutputs.setOutput("assignment-successful", "true");
 
 					// Add to summary
 					await this.addSuccessSummary(reviewers);
 
 					try {
 						await this.setReviewers(reviewers);
-						core.info("✅ Successfully assigned reviewers to PR");
+						this.logger.info("✅ Successfully assigned reviewers to PR");
 					} finally {
-						core.endGroup();
+						this.logger.endGroup();
 					}
 				} else {
-					core.setOutput("assignment-successful", "false");
-					core.info("⚠️ No reviewers selected");
+					this.actionOutputs.setOutput("assignment-successful", "false");
+					this.logger.info("⚠️ No reviewers selected");
 
 					// Add to summary
 					await this.addNoReviewersSummary();
 				}
 			} else {
-				core.setOutput("assignment-successful", "false");
-				core.setOutput("reviewers", "");
-				core.setOutput("reviewer-count", "0");
-				core.info("❌ PR is not ready for review assignment");
+				this.actionOutputs.setOutput("assignment-successful", "false");
+				this.actionOutputs.setOutput("reviewers", "");
+				this.actionOutputs.setOutput("reviewer-count", "0");
+				this.logger.info("❌ PR is not ready for review assignment");
 			}
 		} catch (error: unknown) {
-			core.error(error instanceof Error ? error.message : String(error));
-			core.setFailed(error instanceof Error ? error.message : String(error));
+			this.logger.error(error instanceof Error ? error.message : String(error));
+			this.actionOutputs.setFailed(
+				error instanceof Error ? error.message : String(error),
+			);
 
 			// Set error outputs
-			core.setOutput("assignment-successful", "false");
-			core.setOutput("reviewers", "");
-			core.setOutput("reviewer-count", "0");
+			this.actionOutputs.setOutput("assignment-successful", "false");
+			this.actionOutputs.setOutput("reviewers", "");
+			this.actionOutputs.setOutput("reviewer-count", "0");
 		}
 
-		core.endGroup();
+		this.logger.endGroup();
 	}
 
 	async isReadyToReview(): Promise<boolean> {
@@ -115,36 +120,28 @@ export class Lottery {
 			const pr = await this.getPR();
 			return !!pr;
 		} catch (error: unknown) {
-			core.error(error instanceof Error ? error.message : String(error));
-			core.setFailed(error instanceof Error ? error.message : String(error));
+			this.logger.error(error instanceof Error ? error.message : String(error));
+			this.actionOutputs.setFailed(
+				error instanceof Error ? error.message : String(error),
+			);
 			return false;
 		}
 	}
 
 	async setReviewers(reviewers: string[]): Promise<object> {
-		const ownerAndRepo = this.getOwnerAndRepo();
 		const pr = this.getPRNumber();
-
-		return this.octokit.rest.pulls.requestReviewers({
-			...ownerAndRepo,
-			pull_number: pr,
-			reviewers: reviewers.filter((r: string | undefined) => !!r),
-		});
+		return this.githubService.setReviewers(
+			pr,
+			reviewers.filter((r: string | undefined) => !!r),
+		);
 	}
 
 	async getExistingReviewers(): Promise<string[]> {
-		const ownerAndRepo = this.getOwnerAndRepo();
 		const pr = this.getPRNumber();
-
 		try {
-			const { data } = await this.octokit.rest.pulls.listRequestedReviewers({
-				...ownerAndRepo,
-				pull_number: pr,
-			});
-
-			return data.users.map((user: { login: string }) => user.login);
+			return await this.githubService.getExistingReviewers(pr);
 		} catch (error: unknown) {
-			core.warning(
+			this.logger.warning(
 				`Failed to get existing reviewers: ${error instanceof Error ? error.message : String(error)}`,
 			);
 			return [];
@@ -152,218 +149,94 @@ export class Lottery {
 	}
 
 	async selectReviewers(): Promise<string[]> {
-		core.startGroup("🎲 Selecting reviewers");
+		this.logger.startGroup("🎲 Selecting reviewers");
 
 		const author = await this.getPRAuthor();
 		const existingReviewers = await this.getExistingReviewers();
 
-		core.info(`PR author: ${author}`);
-		core.info(
+		this.logger.info(`PR author: ${author}`);
+		this.logger.info(
 			`Existing reviewers: ${existingReviewers.length > 0 ? existingReviewers.join(", ") : "none"}`,
 		);
 
 		try {
 			if (this.config.selection_rules) {
-				const authorGroup = this.getAuthorGroup(author);
-				core.info(`Author group: ${authorGroup || "none"}`);
+				const authorGroup = this.reviewerSelector.getAuthorGroup(author);
+				this.logger.info(`Author group: ${authorGroup || "none"}`);
 
-				const result = this.selectReviewersWithRules(author, existingReviewers);
+				// Use the ReviewerSelector for core logic
+				const selectionResult = this.reviewerSelector.selectReviewers(
+					author,
+					existingReviewers,
+				);
 
 				// Set output for applied rule info
-				core.setOutput("pr-author", author);
-				core.setOutput("author-group", authorGroup || "none");
-				core.setOutput("existing-reviewers", existingReviewers.join(","));
+				this.actionOutputs.setOutput("pr-author", author);
+				this.actionOutputs.setOutput("author-group", authorGroup || "none");
+				this.actionOutputs.setOutput(
+					"existing-reviewers",
+					existingReviewers.join(","),
+				);
 
-				core.debug(`Selection result: ${result.join(", ")}`);
-				core.endGroup();
-				return result;
+				// Log the selection process
+				for (const step of selectionResult.process) {
+					this.logger.debug(`Step ${step.step}: ${step.description}`);
+				}
+
+				this.logger.debug(
+					`Selection result: ${selectionResult.selectedReviewers.join(", ")}`,
+				);
+				this.logger.endGroup();
+				return selectionResult.selectedReviewers;
 			}
 
-			core.info("No selection rules configured");
-			core.endGroup();
+			this.logger.info("No selection rules configured");
+			this.logger.endGroup();
 			return [];
 		} catch (error: unknown) {
-			core.error(error instanceof Error ? error.message : String(error));
-			core.setFailed(error instanceof Error ? error.message : String(error));
-			core.endGroup();
-			return [];
-		}
-	}
-
-	private selectReviewersWithRules(
-		author: string,
-		existingReviewers: string[],
-	): string[] {
-		const authorGroup = this.getAuthorGroup(author);
-		const rules = this.config.selection_rules;
-
-		if (!rules) {
-			return [];
-		}
-
-		// Find applicable rule for author's group
-		const applicableRule = rules.by_author_group?.find(
-			(rule) => rule.group === authorGroup,
-		);
-
-		// Determine which rule to use based on author's group membership
-		let fromClause: Record<string, number> | undefined;
-
-		if (authorGroup === null) {
-			// Author is not in any group
-			fromClause = rules.non_group_members?.from || rules.default?.from;
-		} else {
-			// Author is in a group
-			fromClause = applicableRule?.from || rules.default?.from;
-		}
-
-		if (!fromClause) {
-			return [];
-		}
-
-		return this.selectFromMultipleGroups(
-			fromClause,
-			author,
-			authorGroup,
-			existingReviewers,
-		);
-	}
-
-	private selectFromMultipleGroups(
-		fromClause: Record<string, number>,
-		author: string,
-		authorGroup: string | null,
-		existingReviewers: string[],
-	): string[] {
-		let selected: string[] = [];
-
-		for (const [groupKey, count] of Object.entries(fromClause)) {
-			if (count <= 0) continue;
-
-			const targetGroups = this.resolveGroupSelection(groupKey, authorGroup);
-			const candidates = this.getCandidatesFromGroups(targetGroups);
-
-			// Count existing reviewers from the target groups
-			const existingFromGroups = existingReviewers.filter((reviewer) =>
-				candidates.includes(reviewer),
+			this.logger.error(error instanceof Error ? error.message : String(error));
+			this.actionOutputs.setFailed(
+				error instanceof Error ? error.message : String(error),
 			);
-
-			// Calculate how many more reviewers we need from this group
-			const remainingNeeded = Math.max(0, count - existingFromGroups.length);
-
-			if (remainingNeeded > 0) {
-				const picks = this.pickRandom(
-					candidates,
-					remainingNeeded,
-					selected.concat(author, ...existingReviewers),
-				);
-				selected = selected.concat(picks);
-			}
+			this.logger.endGroup();
+			return [];
 		}
-
-		return selected;
-	}
-
-	private resolveGroupSelection(
-		groupKey: string,
-		_authorGroup: string | null,
-	): string[] {
-		if (groupKey === "*") {
-			// All groups
-			return this.config.groups.map((g) => g.name);
-		}
-
-		if (groupKey.startsWith("!")) {
-			// Exclude specific group(s) - support comma-separated list
-			const excludeGroups = groupKey
-				.substring(1)
-				.split(",")
-				.map((g) => g.trim());
-			return this.config.groups
-				.map((g) => g.name)
-				.filter((name) => !excludeGroups.includes(name));
-		}
-
-		// Specific group
-		return [groupKey];
-	}
-
-	private getCandidatesFromGroups(groupNames: string[]): string[] {
-		const candidates: string[] = [];
-
-		for (const groupName of groupNames) {
-			const group = this.config.groups.find((g) => g.name === groupName);
-			if (group) {
-				candidates.push(...group.usernames);
-			}
-		}
-
-		return candidates;
 	}
 
 	private async addSuccessSummary(reviewers: string[]): Promise<void> {
 		const author = await this.getPRAuthor();
-		const authorGroup = this.getAuthorGroup(author);
+		const authorGroup = this.reviewerSelector.getAuthorGroup(author);
 		const existingReviewers = await this.getExistingReviewers();
 
-		await core.summary
-			.addHeading("🎯 Reviewer Lottery Results")
-			.addTable([
-				[
-					{ data: "Field", header: true },
-					{ data: "Value", header: true },
-				],
-				["PR Author", author],
-				["Author Group", authorGroup || "none"],
-				[
-					"Existing Reviewers",
-					existingReviewers.length > 0 ? existingReviewers.join(", ") : "none",
-				],
-				["Selected Reviewers", reviewers.join(", ")],
-				["Total Reviewers", reviewers.length.toString()],
-				["Status", "✅ Successfully assigned"],
-			])
-			.write();
+		await this.actionOutputs.addSummary("🎯 Reviewer Lottery Results", [
+			["PR Author", author],
+			["Author Group", authorGroup || "none"],
+			[
+				"Existing Reviewers",
+				existingReviewers.length > 0 ? existingReviewers.join(", ") : "none",
+			],
+			["Selected Reviewers", reviewers.join(", ")],
+			["Total Reviewers", reviewers.length.toString()],
+			["Status", "✅ Successfully assigned"],
+		]);
 	}
 
 	private async addNoReviewersSummary(): Promise<void> {
 		const author = await this.getPRAuthor();
-		const authorGroup = this.getAuthorGroup(author);
+		const authorGroup = this.reviewerSelector.getAuthorGroup(author);
 		const existingReviewers = await this.getExistingReviewers();
 
-		await core.summary
-			.addHeading("🎯 Reviewer Lottery Results")
-			.addTable([
-				[
-					{ data: "Field", header: true },
-					{ data: "Value", header: true },
-				],
-				["PR Author", author],
-				["Author Group", authorGroup || "none"],
-				[
-					"Existing Reviewers",
-					existingReviewers.length > 0 ? existingReviewers.join(", ") : "none",
-				],
-				["Selected Reviewers", "none"],
-				["Total Reviewers", "0"],
-				["Status", "⚠️ No reviewers selected"],
-			])
-			.write();
-	}
-
-	pickRandom(items: string[], n: number, ignore: string[]): string[] {
-		const picks: string[] = [];
-
-		const candidates = items.filter((item) => !ignore.includes(item));
-
-		while (picks.length < n && candidates.length > 0) {
-			const random = Math.floor(Math.random() * candidates.length);
-			const pick = candidates.splice(random, 1)[0];
-
-			if (!picks.includes(pick)) picks.push(pick);
-		}
-
-		return picks;
+		await this.actionOutputs.addSummary("🎯 Reviewer Lottery Results", [
+			["PR Author", author],
+			["Author Group", authorGroup || "none"],
+			[
+				"Existing Reviewers",
+				existingReviewers.length > 0 ? existingReviewers.join(", ") : "none",
+			],
+			["Selected Reviewers", "none"],
+			["Total Reviewers", "0"],
+			["Status", "⚠️ No reviewers selected"],
+		]);
 	}
 
 	async getPRAuthor(): Promise<string> {
@@ -377,24 +250,25 @@ export class Lottery {
 
 			// If we have PR info but no author cached, get it from API
 			if (this.prInfo && (!pr?.user || !pr.user.login)) {
-				const { data } = await this.octokit.rest.pulls.get({
-					...this.getOwnerAndRepo(),
-					pull_number: this.prInfo.prNumber,
-				});
+				const author = await this.githubService.getPRAuthor(
+					this.prInfo.prNumber,
+				);
 
 				// Cache the full PR info with author
 				this.pr = {
-					number: data.number,
-					user: data.user,
+					number: this.prInfo.prNumber,
+					user: { login: author },
 				};
 
-				return data.user?.login ?? "";
+				return author;
 			}
 
 			return pr?.user?.login ?? "";
 		} catch (error: unknown) {
-			core.error(error instanceof Error ? error.message : String(error));
-			core.setFailed(error instanceof Error ? error.message : String(error));
+			this.logger.error(error instanceof Error ? error.message : String(error));
+			this.actionOutputs.setFailed(
+				error instanceof Error ? error.message : String(error),
+			);
 		}
 
 		return "";
@@ -408,15 +282,6 @@ export class Lottery {
 
 	getPRNumber(): number {
 		return Number(this.pr?.number);
-	}
-
-	getAuthorGroup(author: string): string | null {
-		for (const group of this.config.groups) {
-			if (group.usernames.includes(author)) {
-				return group.name;
-			}
-		}
-		return null;
 	}
 
 	async getPR(): Promise<Pull | undefined> {
@@ -433,13 +298,7 @@ export class Lottery {
 
 		// Fallback to API call if no direct PR info available
 		try {
-			const { data } = await this.octokit.rest.pulls.list({
-				...this.getOwnerAndRepo(),
-			});
-
-			this.pr = data.find(
-				({ head: { ref } }: { head: { ref: string } }) => ref === this.env.ref,
-			);
+			this.pr = await this.githubService.findPRByRef(this.env.ref);
 
 			if (!this.pr) {
 				throw new Error(`PR matching ref not found: ${this.env.ref}`);
@@ -447,29 +306,12 @@ export class Lottery {
 
 			return this.pr;
 		} catch (error: unknown) {
-			core.error(error instanceof Error ? error.message : String(error));
-			core.setFailed(error instanceof Error ? error.message : String(error));
+			this.logger.error(error instanceof Error ? error.message : String(error));
+			this.actionOutputs.setFailed(
+				error instanceof Error ? error.message : String(error),
+			);
 
 			return undefined;
 		}
 	}
 }
-
-export const runLottery = async (
-	octokit: Octokit,
-	config: Config,
-	prInfo?: {
-		prNumber: number;
-		repository: string;
-		ref: string;
-		author?: string;
-	},
-	env = {
-		repository: process.env.GITHUB_REPOSITORY || "",
-		ref: process.env.GITHUB_HEAD_REF || "",
-	},
-): Promise<void> => {
-	const lottery = new Lottery({ octokit, config, env, prInfo });
-
-	await lottery.run();
-};
