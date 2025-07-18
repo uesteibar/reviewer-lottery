@@ -5,6 +5,26 @@ import type {
 	SelectionStep,
 } from "../types/selection-types";
 
+// Types for internal use
+interface SelectionRules {
+	default?: {
+		from: Record<string, number>;
+	};
+	by_author_group?: Array<{
+		group: string;
+		from: Record<string, number>;
+	}>;
+	non_group_members?: {
+		from: Record<string, number>;
+	};
+}
+
+// Constants
+const DEFAULT_MULTIPLE_GROUP_STRATEGY = "merge" as const;
+const MULTIPLE_GROUP_STRATEGIES = ["merge", "first"] as const;
+
+type MultipleGroupStrategy = (typeof MULTIPLE_GROUP_STRATEGIES)[number];
+
 export class ReviewerSelector {
 	constructor(private config: Config) {}
 
@@ -79,34 +99,57 @@ export class ReviewerSelector {
 
 		const authorGroups = this.getAuthorGroups(author);
 
-		// If author is not in any group
 		if (authorGroups.length === 0) {
-			const fromClause = rules.non_group_members?.from || rules.default?.from;
-			const ruleType = rules.non_group_members?.from
-				? "non_group_members"
-				: "default";
-
-			if (!fromClause) return null;
-
-			return {
-				type: ruleType,
-				rule: fromClause,
-			};
+			return this.handleNonGroupMemberRule(rules);
 		}
 
-		// If author is in multiple groups, merge rules
 		if (authorGroups.length > 1) {
-			const mergedRule = this.mergeRulesFromGroups(authorGroups);
-			if (!mergedRule) return null;
-
-			return {
-				type: "merged_groups",
-				rule: mergedRule,
-				mergedFromGroups: authorGroups,
-			};
+			return this.handleMultipleGroupsRule(rules, authorGroups);
 		}
 
-		// Single group case (existing logic)
+		return this.handleSingleGroupRule(rules, authorGroup);
+	}
+
+	/**
+	 * Handle rule for authors not in any group
+	 */
+	private handleNonGroupMemberRule(rules: SelectionRules): AppliedRule | null {
+		const fromClause = rules.non_group_members?.from || rules.default?.from;
+		const ruleType = rules.non_group_members?.from
+			? "non_group_members"
+			: "default";
+
+		if (!fromClause) return null;
+
+		return {
+			type: ruleType,
+			rule: fromClause,
+		};
+	}
+
+	/**
+	 * Handle rule for authors in multiple groups
+	 */
+	private handleMultipleGroupsRule(
+		rules: SelectionRules,
+		authorGroups: string[],
+	): AppliedRule | null {
+		const strategy = this.getMultipleGroupStrategy();
+
+		if (strategy === "first") {
+			return this.handleFirstGroupStrategy(rules, authorGroups[0]);
+		}
+
+		return this.handleMergeStrategy(rules, authorGroups);
+	}
+
+	/**
+	 * Handle rule for authors in a single group
+	 */
+	private handleSingleGroupRule(
+		rules: SelectionRules,
+		authorGroup: string | null,
+	): AppliedRule | null {
 		const applicableRule = rules.by_author_group?.find(
 			(rule) => rule.group === authorGroup,
 		);
@@ -123,6 +166,57 @@ export class ReviewerSelector {
 			type: ruleType,
 			index: ruleIndex,
 			rule: fromClause,
+		};
+	}
+
+	/**
+	 * Get the strategy for handling multiple group membership
+	 */
+	private getMultipleGroupStrategy(): MultipleGroupStrategy {
+		return this.config.when_author_in_multiple_groups || DEFAULT_MULTIPLE_GROUP_STRATEGY;
+	}
+
+	/**
+	 * Handle "first" strategy - use only the first group's rule
+	 */
+	private handleFirstGroupStrategy(
+		rules: SelectionRules,
+		firstGroup: string,
+	): AppliedRule | null {
+		const applicableRule = rules.by_author_group?.find(
+			(rule) => rule.group === firstGroup,
+		);
+
+		const fromClause = applicableRule?.from || rules.default?.from;
+		const ruleType = applicableRule ? "by_author_group" : "default";
+		const ruleIndex = applicableRule
+			? rules.by_author_group?.indexOf(applicableRule)
+			: undefined;
+
+		if (!fromClause) return null;
+
+		return {
+			type: ruleType,
+			index: ruleIndex,
+			rule: fromClause,
+			usedGroup: firstGroup,
+		};
+	}
+
+	/**
+	 * Handle "merge" strategy - merge rules from all groups
+	 */
+	private handleMergeStrategy(
+		rules: SelectionRules,
+		authorGroups: string[],
+	): AppliedRule | null {
+		const mergedRule = this.mergeRulesFromGroups(authorGroups);
+		if (!mergedRule) return null;
+
+		return {
+			type: "merged_groups",
+			rule: mergedRule,
+			mergedFromGroups: authorGroups,
 		};
 	}
 

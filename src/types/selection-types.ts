@@ -9,6 +9,7 @@ export interface AppliedRule {
 	index?: number;
 	rule: Record<string, number>;
 	mergedFromGroups?: string[];
+	usedGroup?: string;
 }
 
 export interface SelectionStep {

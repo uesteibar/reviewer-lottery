@@ -25,6 +25,7 @@ interface SelectionRules {
 export interface Config {
 	groups: Group[];
 	selection_rules?: SelectionRules;
+	when_author_in_multiple_groups?: "merge" | "first";
 }
 
 export const getConfig = (): Config => {
@@ -52,6 +53,16 @@ const validateConfig = (config: Config): void => {
 
 	// Validate selection_rules
 	validateSelectionRules(config.selection_rules, config.groups);
+
+	// Validate when_author_in_multiple_groups
+	if (config.when_author_in_multiple_groups) {
+		const validStrategies = ["merge", "first"];
+		if (!validStrategies.includes(config.when_author_in_multiple_groups)) {
+			throw new Error(
+				`Invalid value for 'when_author_in_multiple_groups': '${config.when_author_in_multiple_groups}'. Must be one of: ${validStrategies.join(", ")}`,
+			);
+		}
+	}
 };
 
 const validateSelectionRules = (

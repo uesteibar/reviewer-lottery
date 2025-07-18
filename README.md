@@ -184,16 +184,28 @@ When assigning reviewers, the following priority is used:
 
 #### Multiple Group Membership
 
-When a user belongs to multiple groups, the action merges the selection rules intelligently:
+**The Problem**: When a user belongs to multiple groups, it's unclear which group's selection rules should apply.
 
-**Merge Algorithm**: For each target group, the **maximum** reviewer count is used across all the author's groups.
+**The Solution**: Use the `when_author_in_multiple_groups` configuration option to control this behavior.
 
-**Example**:
+**Configuration** (root level, same as `groups` and `selection_rules`):
 ```yaml
+when_author_in_multiple_groups: merge  # or "first" (default: "merge")
+```
+
+**Available Strategies**:
+- **`merge`** (default): Combines all applicable group rules using maximum values
+- **`first`**: Uses only the first group's rule (based on group definition order)
+
+**Complete Example**:
+```yaml
+# Root-level configuration
+when_author_in_multiple_groups: merge
+
 groups:
-  - name: backend
+  - name: backend        # alice is in backend (defined first)
     usernames: [alice, bob, charlie]
-  - name: frontend
+  - name: frontend       # alice is also in frontend  
     usernames: [alice, diana, eve]
   - name: ops
     usernames: [frank, grace]
@@ -202,26 +214,27 @@ selection_rules:
   by_author_group:
     - group: backend
       from:
-        backend: 1
+        backend: 1     # backend rule: 1 backend + 2 ops
         ops: 2
 
     - group: frontend
       from:
-        backend: 2
+        backend: 2     # frontend rule: 2 backend + 1 ops
         ops: 1
 ```
 
-If **alice** (who belongs to both `backend` and `frontend`) creates a PR:
-- From `backend` group rule: backend: 1, ops: 2
-- From `frontend` group rule: backend: 2, ops: 1
-- **Merged rule**: backend: 2 (max of 1,2), ops: 2 (max of 2,1)
-- **Result**: 2 reviewers from backend + 2 reviewers from ops = 4 total reviewers
+**Behavior Comparison**:
 
-#### Special Keywords
+When **alice** (member of both `backend` and `frontend`) creates a PR:
 
-- **`"*"`** - Select from all groups
-- **`"!groupname"`** - Select from all groups except the specified one
-- **`"!group1,group2"`** - Select from all groups except the specified ones (comma-separated)
+| Strategy | Rule Applied | Reviewers Assigned | Total |
+|----------|-------------|-------------------|-------|
+| `merge` | backend: max(1,2)=2, ops: max(2,1)=2 | 2 from backend + 2 from ops | 4 |
+| `first` | backend: 1, ops: 2 (ignores frontend rule) | 1 from backend + 2 from ops | 3 |
+
+**When to Use Each Strategy**:
+- **`merge`**: When you want comprehensive review coverage (more reviewers)
+- **`first`**: When you want predictable, minimal review assignment
 
 #### When No Reviewers Are Added
 
