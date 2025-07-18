@@ -182,6 +182,47 @@ When assigning reviewers, the following priority is used:
 2. **For authors not in any group**: Uses `non_group_members` if defined, falls back to `default`
 3. **No reviewers assigned**: If no `from` clause is found or is empty
 
+#### Multiple Group Membership
+
+When a user belongs to multiple groups, the action merges the selection rules intelligently:
+
+**Merge Algorithm**: For each target group, the **maximum** reviewer count is used across all the author's groups.
+
+**Example**:
+```yaml
+groups:
+  - name: backend
+    usernames: [alice, bob, charlie]
+  - name: frontend
+    usernames: [alice, diana, eve]
+  - name: ops
+    usernames: [frank, grace]
+
+selection_rules:
+  by_author_group:
+    - group: backend
+      from:
+        backend: 1
+        ops: 2
+
+    - group: frontend
+      from:
+        backend: 2
+        ops: 1
+```
+
+If **alice** (who belongs to both `backend` and `frontend`) creates a PR:
+- From `backend` group rule: backend: 1, ops: 2
+- From `frontend` group rule: backend: 2, ops: 1
+- **Merged rule**: backend: 2 (max of 1,2), ops: 2 (max of 2,1)
+- **Result**: 2 reviewers from backend + 2 reviewers from ops = 4 total reviewers
+
+#### Special Keywords
+
+- **`"*"`** - Select from all groups
+- **`"!groupname"`** - Select from all groups except the specified one
+- **`"!group1,group2"`** - Select from all groups except the specified ones (comma-separated)
+
 #### When No Reviewers Are Added
 
 Reviewers will **not** be added in the following cases:

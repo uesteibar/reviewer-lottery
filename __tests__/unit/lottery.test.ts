@@ -225,6 +225,39 @@ describe("Lottery Business Logic", () => {
 			).toBe("backend");
 		});
 
+		test("returns all groups if user is in multiple groups", () => {
+			const lotteryWithOverlap = new Lottery({
+				logger: createMockLogger(),
+				actionOutputs: createMockActionOutputs(),
+				githubService: createMockGitHubService(),
+				config: {
+					groups: [
+						{
+							name: "backend",
+							usernames: ["alice", "bob"],
+						},
+						{
+							name: "fullstack",
+							usernames: ["alice", "charlie"],
+						},
+						{
+							name: "devops",
+							usernames: ["alice", "david"],
+						},
+					],
+					selection_rules: {},
+				},
+				env: {
+					repository: "test/repo",
+					ref: "refs/pull/1/head",
+				},
+			});
+
+			expect(
+				lotteryWithOverlap.reviewerSelectorForTesting.getAuthorGroups("alice"),
+			).toEqual(["backend", "fullstack", "devops"]);
+		});
+
 		test("handles empty groups", () => {
 			const lotteryWithEmptyGroups = new Lottery({
 				logger: createMockLogger(),
@@ -628,6 +661,105 @@ describe("Lottery Business Logic", () => {
 				);
 
 			expect(result).toEqual([]);
+		});
+
+		test("merges rules when author is in multiple groups", () => {
+			const lotteryWithMultipleGroups = new Lottery({
+				logger: createMockLogger(),
+				actionOutputs: createMockActionOutputs(),
+				githubService: createMockGitHubService(),
+				config: {
+					groups: [
+						{
+							name: "frontend",
+							usernames: ["alice", "bob"],
+						},
+						{
+							name: "backend",
+							usernames: ["charlie", "diana"],
+						},
+						{
+							name: "devops",
+							usernames: ["alice", "eve"],
+						},
+					],
+					selection_rules: {
+						default: {
+							from: { "*": 1 },
+						},
+						by_author_group: [
+							{
+								group: "frontend",
+								from: { backend: 2, devops: 1 },
+							},
+							{
+								group: "devops",
+								from: { frontend: 1, backend: 1 },
+							},
+						],
+					},
+				},
+				env: {
+					repository: "test/repo",
+					ref: "refs/pull/1/head",
+				},
+			});
+
+			const result = lotteryWithMultipleGroups.reviewerSelectorForTesting.selectReviewers("alice");
+
+			// alice is in both frontend and devops groups
+			// frontend rule: backend(2) + devops(1)
+			// devops rule: frontend(1) + backend(1)
+			// merged rule: backend(max(2,1)=2) + devops(max(1,0)=1) + frontend(max(0,1)=1)
+			expect(result.appliedRule?.type).toBe("merged_groups");
+			expect(result.appliedRule?.mergedFromGroups).toEqual(["frontend", "devops"]);
+			expect(result.appliedRule?.rule).toEqual({ backend: 2, devops: 1, frontend: 1 });
+			expect(result.selectedReviewers).toHaveLength(4); // 2 backend + 1 devops + 1 frontend
+			expect(result.selectedReviewers).not.toContain("alice");
+		});
+
+		test("uses default rule when no group-specific rules exist for merged groups", () => {
+			const lotteryWithDefaultFallback = new Lottery({
+				logger: createMockLogger(),
+				actionOutputs: createMockActionOutputs(),
+				githubService: createMockGitHubService(),
+				config: {
+					groups: [
+						{
+							name: "frontend",
+							usernames: ["alice", "bob"],
+						},
+						{
+							name: "backend",
+							usernames: ["charlie", "diana"],
+						},
+						{
+							name: "devops",
+							usernames: ["alice", "eve"],
+						},
+					],
+					selection_rules: {
+						default: {
+							from: { "*": 1 },
+						},
+					},
+				},
+				env: {
+					repository: "test/repo",
+					ref: "refs/pull/1/head",
+				},
+			});
+
+			const result = lotteryWithDefaultFallback.reviewerSelectorForTesting.selectReviewers("alice");
+
+			// alice is in both frontend and devops groups
+			// No group-specific rules, so both groups use default rule
+			// merged rule: *(max(1,1)=1)
+			expect(result.appliedRule?.type).toBe("merged_groups");
+			expect(result.appliedRule?.mergedFromGroups).toEqual(["frontend", "devops"]);
+			expect(result.appliedRule?.rule).toEqual({ "*": 1 });
+			expect(result.selectedReviewers).toHaveLength(1);
+			expect(result.selectedReviewers).not.toContain("alice");
 		});
 	});
 

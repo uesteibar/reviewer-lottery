@@ -37,6 +37,7 @@ interface TestScenario {
 		name: string;
 		members: string[];
 	}>;
+	rules?: any;
 }
 
 const createScenario = (scenario: TestScenario) => {
@@ -50,6 +51,7 @@ const createScenario = (scenario: TestScenario) => {
 			name: team.name,
 			usernames: team.members,
 		})),
+		selection_rules: scenario.rules || {},
 	};
 
 	return { pull, config };
@@ -1259,6 +1261,106 @@ describe("Reviewer Lottery System", () => {
 			await whenLotteryRuns(configWithNegativeCount);
 
 			// Then: negative count is treated as zero
+		});
+	});
+
+	describe("Multiple group membership", () => {
+		test("merges rules when author belongs to multiple groups", async () => {
+			// Given: author in multiple groups with different rules
+			const scenario = createScenario({
+				author: "alice",
+				teams: [
+					{
+						name: "frontend-team",
+						members: ["alice", "bob"],
+					},
+					{
+						name: "backend-team",
+						members: ["charlie", "diana"],
+					},
+					{
+						name: "devops-team",
+						members: ["alice", "eve"],
+					},
+				],
+				rules: {
+					by_author_group: [
+						{
+							group: "frontend-team",
+							from: { "backend-team": 2, "devops-team": 1 },
+						},
+						{
+							group: "devops-team",
+							from: { "frontend-team": 1, "backend-team": 1 },
+						},
+					],
+					default: {
+						from: { "*": 1 },
+					},
+				},
+			});
+
+			const api = givenGitHubAPI();
+			const _pullMock = api.setupPullRequest(scenario.pull);
+			const _existingReviewersMock = api.setupExistingReviewers([]);
+			const _reviewerMock = api.expectReviewerAssignment({
+				count: 4, // merged rule: backend(2) + devops(1) + frontend(1)
+				shouldExclude: ["alice"],
+				validCandidates: ["bob", "charlie", "diana", "eve"],
+			});
+
+			// When: Alice (in both frontend and devops) opens PR
+			await whenLotteryRuns(scenario.config);
+
+			// Then: rules are merged and all required reviewers are selected
+			// Expectations are performed within the mock
+		});
+
+		test("handles single group rule when author is in multiple groups with partial rules", async () => {
+			// Given: author in multiple groups but only one has rules
+			const scenario = createScenario({
+				author: "alice",
+				teams: [
+					{
+						name: "frontend-team",
+						members: ["alice", "bob"],
+					},
+					{
+						name: "backend-team",
+						members: ["charlie", "diana"],
+					},
+					{
+						name: "qa-team",
+						members: ["alice", "eve"],
+					},
+				],
+				rules: {
+					by_author_group: [
+						{
+							group: "frontend-team",
+							from: { "backend-team": 1, "qa-team": 1 },
+						},
+					],
+					default: {
+						from: { "*": 1 },
+					},
+				},
+			});
+
+			const api = givenGitHubAPI();
+			const _pullMock = api.setupPullRequest(scenario.pull);
+			const _existingReviewersMock = api.setupExistingReviewers([]);
+			const _reviewerMock = api.expectReviewerAssignment({
+				count: 2, // merged rule: backend(1) + qa(1) + *(1) = backend(1) + qa(1) + frontend(1) but alice excluded
+				shouldExclude: ["alice"],
+				validCandidates: ["bob", "charlie", "diana", "eve"],
+			});
+
+			// When: Alice (in frontend and qa, but qa has no specific rules) opens PR
+			await whenLotteryRuns(scenario.config);
+
+			// Then: frontend rule is merged with default rule for qa
+			// Expectations are performed within the mock
 		});
 	});
 

@@ -55,41 +55,65 @@ export class ReviewerSelector {
 	}
 
 	/**
+	 * Get all groups that the author belongs to
+	 */
+	getAuthorGroups(author: string): string[] {
+		const groups: string[] = [];
+		for (const group of this.config.groups) {
+			if (group.usernames.includes(author)) {
+				groups.push(group.name);
+			}
+		}
+		return groups;
+	}
+
+	/**
 	 * Determine which rule applies to the author
 	 */
 	private determineApplicableRule(
-		_author: string,
+		author: string,
 		authorGroup: string | null,
 	): AppliedRule | null {
 		const rules = this.config.selection_rules;
 		if (!rules) return null;
 
-		// Find applicable rule for author's group
+		const authorGroups = this.getAuthorGroups(author);
+
+		// If author is not in any group
+		if (authorGroups.length === 0) {
+			const fromClause = rules.non_group_members?.from || rules.default?.from;
+			const ruleType = rules.non_group_members?.from
+				? "non_group_members"
+				: "default";
+			
+			if (!fromClause) return null;
+			
+			return {
+				type: ruleType,
+				rule: fromClause,
+			};
+		}
+
+		// If author is in multiple groups, merge rules
+		if (authorGroups.length > 1) {
+			const mergedRule = this.mergeRulesFromGroups(authorGroups);
+			if (!mergedRule) return null;
+			
+			return {
+				type: "merged_groups",
+				rule: mergedRule,
+				mergedFromGroups: authorGroups,
+			};
+		}
+
+		// Single group case (existing logic)
 		const applicableRule = rules.by_author_group?.find(
 			(rule) => rule.group === authorGroup,
 		);
 
-		// Determine which rule to use based on author's group membership
-		let fromClause: Record<string, number> | undefined;
-		let ruleType: AppliedRule["type"];
-		let ruleIndex: number | undefined;
-
-		if (authorGroup === null) {
-			// Author is not in any group
-			fromClause = rules.non_group_members?.from || rules.default?.from;
-			ruleType = rules.non_group_members?.from
-				? "non_group_members"
-				: "default";
-		} else {
-			// Author is in a group
-			fromClause = applicableRule?.from || rules.default?.from;
-			if (applicableRule) {
-				ruleType = "by_author_group";
-				ruleIndex = rules.by_author_group?.indexOf(applicableRule);
-			} else {
-				ruleType = "default";
-			}
-		}
+		const fromClause = applicableRule?.from || rules.default?.from;
+		const ruleType = applicableRule ? "by_author_group" : "default";
+		const ruleIndex = applicableRule ? rules.by_author_group?.indexOf(applicableRule) : undefined;
 
 		if (!fromClause) return null;
 
@@ -98,6 +122,30 @@ export class ReviewerSelector {
 			index: ruleIndex,
 			rule: fromClause,
 		};
+	}
+
+	/**
+	 * Merge rules from multiple groups
+	 */
+	private mergeRulesFromGroups(authorGroups: string[]): Record<string, number> | null {
+		const rules = this.config.selection_rules;
+		if (!rules?.by_author_group) return rules?.default?.from || null;
+
+		const mergedRule: Record<string, number> = {};
+		
+		for (const groupName of authorGroups) {
+			const groupRule = rules.by_author_group.find(rule => rule.group === groupName);
+			const fromClause = groupRule?.from || rules.default?.from;
+			
+			if (fromClause) {
+				// Merge by taking maximum count for each target group
+				for (const [targetGroup, count] of Object.entries(fromClause)) {
+					mergedRule[targetGroup] = Math.max(mergedRule[targetGroup] || 0, count);
+				}
+			}
+		}
+
+		return Object.keys(mergedRule).length > 0 ? mergedRule : null;
 	}
 
 	/**

@@ -5,9 +5,10 @@ export interface ReviewerSelectionResult {
 }
 
 export interface AppliedRule {
-	type: "default" | "by_author_group" | "non_group_members";
+	type: "default" | "by_author_group" | "non_group_members" | "merged_groups";
 	index?: number;
 	rule: Record<string, number>;
+	mergedFromGroups?: string[];
 }
 
 export interface SelectionStep {
