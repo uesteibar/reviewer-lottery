@@ -1,49 +1,49 @@
 {
-	"name": "reviewer-lottery",
-	"version": "0.0.0",
-	"private": true,
-	"description": "Automatically assign reviewers to Pull Requests",
-	"main": "lib/main.js",
-	"bin": {
-		"config-test": "bin/config-test.js"
-	},
-	"scripts": {
-		"typecheck": "tsc --noEmit",
-		"format": "biome format --write",
-		"format-check": "biome format",
-		"lint": "biome check",
-		"lint-fix": "biome check --write",
-		"pack": "tsup",
-		"test": "jest",
-		"all": "pnpm run typecheck && pnpm run format && pnpm run lint && pnpm run pack && pnpm test"
-	},
-	"repository": {
-		"type": "git",
-		"url": "git+https://github.com/fan-k-tamura/reviewer-lottery.git"
-	},
-	"keywords": [
-		"actions",
-		"node",
-		"setup"
-	],
-	"author": "fan-k-tamura",
-	"license": "MIT",
-	"dependencies": {
-		"@actions/core": "^1.9.1",
-		"@actions/github": "^6.0.1",
-		"chalk": "^5.4.1"
-	},
-	"devDependencies": {
-		"@biomejs/biome": "2.1.1",
-		"@types/jest": "30.0.0",
-		"@types/js-yaml": "^4.0.5",
-		"@types/nock": "10.0.3",
-		"@types/node": "^20.0.0",
-		"jest": "30.0.4",
-		"js-yaml": "^4.1.0",
-		"nock": "14.0.5",
-		"ts-jest": "^29.1.0",
-		"tsup": "^8.5.0",
-		"typescript": "^5.0.4"
-	}
+  "name": "reviewer-lottery",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Automatically assign reviewers to Pull Requests",
+  "main": "lib/main.js",
+  "bin": {
+    "config-test": "bin/config-test.js"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "format": "biome format --write",
+    "format-check": "biome format",
+    "lint": "biome check",
+    "lint-fix": "biome check --write",
+    "pack": "tsup",
+    "test": "jest",
+    "all": "pnpm run typecheck && pnpm run format && pnpm run lint && pnpm run pack && pnpm test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fan-k-tamura/reviewer-lottery.git"
+  },
+  "keywords": [
+    "actions",
+    "node",
+    "setup"
+  ],
+  "author": "fan-k-tamura",
+  "license": "MIT",
+  "dependencies": {
+    "@actions/core": "^1.9.1",
+    "@actions/github": "^6.0.1",
+    "chalk": "^5.4.1"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.1.1",
+    "@types/jest": "30.0.0",
+    "@types/js-yaml": "^4.0.5",
+    "@types/nock": "10.0.3",
+    "@types/node": "^20.0.0",
+    "jest": "30.0.4",
+    "js-yaml": "^4.1.0",
+    "nock": "14.0.5",
+    "ts-jest": "^29.1.0",
+    "tsup": "^8.5.0",
+    "typescript": "^5.0.4"
+  }
 }
