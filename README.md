@@ -49,6 +49,25 @@ jobs:
         repo-token: ${{ secrets.GITHUB_TOKEN }}
 ```
 
+If you are a Github Enterprise user, you must provide a base url for your Github instance's API:
+
+```yaml
+name: "Reviewer lottery"
+on:
+  pull_request_target:
+    types: [opened, ready_for_review, reopened]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v1
+    - uses: omniplatypus/reviewer-lottery@v3.2.1
+      with:
+        repo-token: ${{ secrets.GITHUB_TOKEN }}
+        base-url: https://git.yourcompany.com/api/v3
+```
+
 
 When opening a PR, this github action will assign random reviewers:
 
