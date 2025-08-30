@@ -4,6 +4,7 @@ import fs from 'fs'
 
 interface Group {
   name: string
+  matchLabel?: string
   reviewers?: number
   internal_reviewers?: number
   usernames: string[]
