@@ -12,7 +12,6 @@ async function run(): Promise<void> {
     const token = core.getInput('repo-token', {required: true})
     const userBaseUrl = core.getInput('base-url', {required: false})
     const config = getConfig()
-  
 
     await runLottery(new Octokit({auth: token, baseUrl: userBaseUrl}), config)
   } catch (error: any) {
