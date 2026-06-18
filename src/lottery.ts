@@ -107,7 +107,8 @@ class Lottery {
   pickRandom(items: string[], n: number, ignore: string[]): string[] {
     const picks: string[] = []
 
-    const candidates = items.filter(item => !ignore.includes(item))
+    const ignoreLc = ignore.map(i => i.toLowerCase())
+    const candidates = items.filter(item => !ignoreLc.includes(item.toLowerCase()))
 
     while (picks.length < n) {
       const random = Math.floor(Math.random() * candidates.length)
